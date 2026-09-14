@@ -380,6 +380,18 @@ app.whenReady().then(async () => {
   if (!globalShortcut.register("CommandOrControl+Shift+R", toggle)) {
     log.warn("Global shortcut registration failed");
   }
+  // [RECORDER-DEMO] begin — marker hotkey: drop a timestamped marker into the
+  // event stream while recording (vendor kept marker capture after removing
+  // the HUD button; this restores a user-facing trigger, see PATCHES.md).
+  const markerHotkey = () => {
+    if (recorder.status().state !== "recording") return;
+    const result = recorder.marker(`manual marker at ${new Date().toISOString()}`);
+    if (!result.ok) log.warn("marker hotkey failed:", result.error ?? "unknown");
+  };
+  if (!globalShortcut.register("CommandOrControl+Shift+M", markerHotkey)) {
+    log.warn("Marker shortcut registration failed");
+  }
+  // [RECORDER-DEMO] end
 
   app.on("activate", () => {
     if (recorder.state === "recording") {

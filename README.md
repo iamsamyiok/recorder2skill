@@ -9,8 +9,11 @@ Record a task once on screen, then let your agent turn it into a standard
 Works with ANY agent that can run shell commands and read files (OpenCode,
 Claude Code, Codex, ...): every recorder operation is a plain CLI command, and
 `skill/recorder2skill/SKILL.md` is a standard Agent Skills file that teaches
-the agent the whole flow. The recording core is the original project, vendored
-unmodified except for marked bootstrap patches (see [PATCHES.md](PATCHES.md)):
+the agent the whole flow. The generated `SKILL.md` frontmatter (`name`,
+`description`, plus `allowed-tools`) is compatible with OpenCode, Claude Code
+and Codex CLI (Codex parses the same frontmatter and ignores unknown fields).
+The recording core is the original project, vendored unmodified except for
+marked bootstrap patches (see [PATCHES.md](PATCHES.md)):
 
 - screen + window recording (Chromium capture, always-on-top control bar with
   Stop),
@@ -18,7 +21,11 @@ unmodified except for marked bootstrap patches (see [PATCHES.md](PATCHES.md)):
   clipboard previews),
 - on-stop pipeline: FFmpeg-backed frame extraction fallback + snapshot
   extraction with perceptual-hash (dHash) dedupe, event correlation, timeline
-  `bundle.json`.
+  `bundle.json`, plus an auto-generated `description.md` first-pass summary,
+- `Ctrl/Cmd+Shift+M` drops a marker mid-recording for intentional step
+  boundaries,
+- structured-PII redaction (email / card / SSN / phone) applied to event text
+  previews at read time (vendor detectors; raw values stay on disk).
 
 What changed vs. the original:
 

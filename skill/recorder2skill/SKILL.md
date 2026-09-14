@@ -47,11 +47,19 @@ All times are `atMs` = milliseconds since recording start.
 Captured event types (what `events` returns by default):
 `app.activate`, `app.title-change`, `browser.url`, `clipboard.change`,
 `terminal.command`, `marker`. Add `--all` (or explicit `--types`) to include
-structural lifecycle events.
+structural lifecycle events. Press `Ctrl+Shift+M` (Windows/Linux) or
+`Cmd+Shift+M` (macOS) DURING a recording to drop a marker at an intentional
+boundary — markers make step splitting much more reliable. String fields in
+`events` output are redacted for structured PII (email/card/SSN/phone);
+raw values stay on disk only.
 
 1. `node scripts/recorder-cli.mjs timeline` — the shape: ordered steps with
    app / urls / titles / commands / clipboard counts / markers / frame counts.
-2. Form a hypothesis about the overall intent from apps + urls + commands.
+   The response also carries `description` (the vendor describer's auto
+   generated markdown) — read it FIRST as the initial hypothesis, then verify
+   and refine against events.
+2. Form a hypothesis about the overall intent from the returned `description`
+   plus apps / urls / commands.
 3. `node scripts/recorder-cli.mjs events` around anything unclear — clipboard
    text (`textPreview`), exact URLs, the sequence of title changes. Narrow
    with `--from <ms> --to <ms>` windows.

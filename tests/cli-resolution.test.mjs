@@ -119,3 +119,34 @@ test("wait-ready waits for the anchored session and honours the timeout", () => 
   assert.ok(Date.now() - t0 >= 900, "timeout should actually wait ~1s");
   assert.match(r.stdout, /missing0 has no READY\.json/);
 });
+
+test("events command redacts PII previews", () => {
+  const dir = path.join(os.tmpdir(), `r2s-events-pii-${process.pid}`);
+  const sid = "20260914-165000-pii0000";
+  const sessionDir = path.join(dir, "sessions", sid);
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(path.join(sessionDir, "session.json"), JSON.stringify({ id: sid, startedAt: 1000 }));
+  writeFileSync(
+    path.join(sessionDir, "events.jsonl"),
+    JSON.stringify({ seq: 0, t: 10, epoch: 1010, type: "clipboard.change", source: "clipboard", payload: { text: "card 4111 1111 1111 1111" } }) + "\n",
+  );
+  const r = runCli(["events", sid], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 0);
+  const out = r.stdout;
+  assert.ok(!out.includes("4111 1111"), "raw card must not appear");
+  assert.match(out, /••••/);
+  assert.match(out, /redactedFields/);
+});
+
+test("summary surfaces description.md when present", () => {
+  const dir = path.join(os.tmpdir(), `r2s-summary-desc-${process.pid}`);
+  const sid = "20260914-165100-desc0001";
+  const sessionDir = path.join(dir, "sessions", sid);
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(path.join(sessionDir, "session.json"), JSON.stringify({ id: sid, startedAt: 1000 }));
+  writeFileSync(path.join(sessionDir, "description.md"), "# Session recording\n\nOver 5s the user verified things.\n");
+  const r = runCli(["summary", sid], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /did the user verified things|verified things/);
+  assert.match(r.stdout, /descriptionPath/);
+});

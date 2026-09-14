@@ -16,6 +16,7 @@ import { type Plugin, tool } from "@opencode-ai/plugin";
 
 // Reused, unmodified, from the vendored original project (MIT).
 import { MEANINGFUL_EVENT_TYPES } from "../../vendor/skill-recorder/common/correlation";
+import { redactText, scanStructuredPii } from "../../vendor/skill-recorder/common/sensitive";
 import { slugifySkillName } from "../../vendor/skill-recorder/common/skill";
 
 const pluginDir = path.dirname(fileURLToPath(import.meta.url));
@@ -171,11 +172,18 @@ export const RecorderDemoPlugin: Plugin = async () => {
             });
           }
           const startedAt = bundle.session.startedAt;
+          // Vendor's heuristic describer output — a ready-made first-pass
+          // analysis the agent can refine instead of starting from zero.
+          const descriptionPath = path.join(found.dir, "description.md");
+          const description = existsSync(descriptionPath)
+            ? readFileSync(descriptionPath, "utf8")
+            : undefined;
           const view = {
             sessionId: found.id,
             durationMs: bundle.session.durationMs,
             platform: bundle.session.platform,
             stats: bundle.stats,
+            ...(description ? { description, descriptionPath } : {}),
             steps: bundle.steps.map((s) => ({
               index: s.index,
               atMs: s.startMs - startedAt,
@@ -223,7 +231,14 @@ export const RecorderDemoPlugin: Plugin = async () => {
           const rows = all.slice(0, MAX_EVENTS).map((e) => {
             const payload: Record<string, unknown> = {};
             for (const [k, v] of Object.entries(e.payload)) {
-              payload[k] = typeof v === "string" && v.length > 2000 ? v.slice(0, 2000) + "…[truncated]" : v;
+              let out: unknown = typeof v === "string" && v.length > 2000 ? v.slice(0, 2000) + "…[truncated]" : v;
+              // Redact structured PII in string fields with the vendor's
+              // dependency-free detectors; raw values stay untouched on disk.
+              if (typeof out === "string") {
+                const matches = scanStructuredPii(out);
+                if (matches.length > 0) out = redactText(out, matches);
+              }
+              payload[k] = out;
             }
             return { seq: e.seq, atMs: e.atMs, type: e.type, source: e.source, ...payload };
           });

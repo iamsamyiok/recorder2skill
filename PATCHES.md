@@ -72,6 +72,32 @@ dHash-dedupe / event-collection / bundling pipeline never touches these
 packages; a full record-to-READY session was re-validated with the stubs in
 place.
 
+## 4. `electron/main.ts` — marker hotkey `[RECORDER-DEMO]`
+
+The vendor kept `recorder.marker(note)` capture after removing the "Add
+marker" HUD button (in favor of voice narration, which the demo stubs out).
+This patch re-exposes a user-facing trigger: a global shortcut
+`CommandOrControl+Shift+M` that drops a `marker` event (source `user`,
+note = `manual marker at <ISO timestamp>`) into the live event stream while
+recording. Markers give the analysis phase intentional step boundaries and
+survive in `events.jsonl` / `bundle.json` like any other event.
+
+## 5. Demo layer integration of vendor `common/sensitive.ts` (no vendor change)
+
+The vendor ships dependency-free, checksum-validated structured-PII detectors
+(`scanStructuredPii`, `redactText` — email / payment card / SSN / phone).
+The demo now applies them at **read time** (raw session files on disk stay
+untouched):
+
+- `recorder-cli.mjs events` redacts `textPreview` / `text` / `title` / `url`
+  / `note` string fields and reports `redactedFields`; the CLI imports the
+  vendor `.ts` directly (Node >= 24 strips the erasable types at import).
+- The OpenCode plugin's `recorder_get_events` applies the same redaction to
+  every string payload field.
+- `summary` / `timeline` (CLI) and `recorder_get_timeline` (plugin) surface
+  the vendor describer's `description.md` as a ready-made first-pass
+  analysis (`description` / `descriptionPath`).
+
 ## Platform notes (demo layer, no vendor changes)
 
 - The vendor natively supports macOS and Ubuntu (`install.sh`); the demo

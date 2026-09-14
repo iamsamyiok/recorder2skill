@@ -22,11 +22,16 @@ All times are `atMs` = milliseconds since recording start.
 Captured event types (what `recorder_get_events` can return):
 `app.activate`, `app.title-change`, `browser.url`, `clipboard.change`,
 `terminal.command`, `marker`. Structural/lifecycle events are excluded by
-default; pass explicit `types` to widen.
+default; pass explicit `types` to widen. Users can press
+`Cmd/Ctrl+Shift+M` during a recording to drop a marker at an intentional
+boundary. String payload fields are redacted for structured PII
+(email/card/SSN/phone); raw values stay on disk only.
 
 1. Read `recorder_get_timeline` — the shape of the session: ordered steps with
-   app / urls / titles / commands / clipboard counts / markers.
-2. Form a hypothesis about the overall intent from apps + urls + commands.
+   app / urls / titles / commands / clipboard counts / markers. The response
+   also carries `description` (the vendor describer's auto-generated
+   markdown) — read it FIRST as the initial hypothesis.
+2. Verify and refine that hypothesis against apps / urls / commands.
 3. Read `recorder_get_events` around anything unclear — clipboard text, exact
    URLs, the sequence of title changes.
 4. Look at frames ONLY where events are silent or ambiguous

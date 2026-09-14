@@ -19,6 +19,9 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, 
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+// Vendor's dependency-free structured-PII detectors (TS with erasable types;
+// Node 24 strips them at import time). See PATCHES.md.
+import { redactText, scanStructuredPii } from "../vendor/skill-recorder/common/sensitive.ts";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const vendorRoot = path.join(projectRoot, "vendor", "skill-recorder");
@@ -180,6 +183,17 @@ function readSessionSummary(dir) {
       } catch {
         out[key] = null;
       }
+    }
+  }
+  // Vendor's heuristic describer writes description.md during post-processing;
+  // surface it as a ready-made first-pass analysis.
+  const descriptionMd = path.join(dir, "description.md");
+  if (existsSync(descriptionMd)) {
+    try {
+      out.description = readFileSync(descriptionMd, "utf8");
+      out.descriptionPath = descriptionMd;
+    } catch {
+      // unreadable description is not fatal
     }
   }
   const framesManifest = path.join(dir, "frames", "frames.json");
@@ -449,8 +463,26 @@ function cmdEvents(sessionIdOrUndefined, opts) {
   const limit = opts.limit ?? 500;
   const truncated = events.length > limit;
   events = events.slice(0, limit);
+  // Redact structured PII (email / card / SSN / phone) in text previews using
+  // the vendor's dependency-free detectors, so pasting events into an LLM
+  // context never leaks raw values. Raw values stay untouched on disk.
+  let redactedCount = 0;
+  for (const e of events) {
+    for (const key of ["textPreview", "text", "title", "url", "note"]) {
+      const value = e[key];
+      if (typeof value !== "string" || value.length === 0) continue;
+      const matches = scanStructuredPii(value);
+      if (matches.length === 0) continue;
+      e[key] = redactText(value, matches);
+      redactedCount++;
+    }
+  }
   process.stdout.write(
-    JSON.stringify({ ok: true, sessionId: id, count: events.length, total, truncated, events }, null, 2) + "\n",
+    JSON.stringify(
+      { ok: true, sessionId: id, count: events.length, total, truncated, redactedFields: redactedCount, events },
+      null,
+      2,
+    ) + "\n",
   );
 }
 

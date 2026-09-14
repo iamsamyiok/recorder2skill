@@ -88,6 +88,32 @@ test("events default filter drops structural + truncates long payloads", async (
   assert.equal(v.events[0].atMs, 2000);
 });
 
+test("events redact structured PII in string payload fields", async () => {
+  const dir = path.join(DATA, "sessions", "20260914-130000-piiiiiii");
+  const piiStart = T0 - 600_000; // oldest session: must not hijack newest-resolution tests
+  seed(dir, "20260914-130000-piiiiiii", piiStart);
+  const rows = [
+    { seq: 0, t: 1000, epoch: piiStart + 1000, type: "clipboard.change", source: "clipboard", payload: { text: "pay with card 4111 1111 1111 1111" } },
+    { seq: 1, t: 2000, epoch: piiStart + 2000, type: "app.title-change", source: "active-window", payload: { title: "mail bob@example.com now" } },
+  ];
+  writeFileSync(path.join(dir, "events.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+  writeFileSync(path.join(dir, "READY.json"), JSON.stringify({ sessionId: "20260914-130000-piiiiiii", readyAt: Date.now() }));
+  const v = J(await tools.recorder_get_events.execute({ sessionId: "20260914-130000-piiiiiii" }, {}));
+  const clip = v.events.find((e) => e.type === "clipboard.change");
+  const title = v.events.find((e) => e.type === "app.title-change");
+  assert.ok(!clip.text.includes("4111"), "raw card number must not leak");
+  assert.ok(clip.text.includes("••••"), "masked card expected");
+  assert.ok(!title.title.includes("bob@example.com"), "raw email must not leak");
+});
+
+test("timeline surfaces the vendor description.md as first-pass analysis", async () => {
+  const dir = path.join(DATA, "sessions", "20260914-110000-bbbbbbb");
+  writeFileSync(path.join(dir, "description.md"), "# Session recording\n\nOver 60s the user did the thing.\n");
+  const v = J(await tools.recorder_get_timeline.execute({ sessionId: "20260914-110000-bbbbbbb" }, {}));
+  assert.ok(v.description.includes("did the thing"));
+  assert.ok(v.descriptionPath.endsWith("description.md"));
+});
+
 test("events types filter", async () => {
   const v = J(await tools.recorder_get_events.execute({ types: ["browser.url"] }, {}));
   assert.equal(v.total, 1);
@@ -151,7 +177,7 @@ test("save_skill slug + SKILL.md render", async () => {
 
 test("sessions newest-first + ready flag", async () => {
   const v = J(await tools.recorder_sessions.execute({}, {}));
-  assert.equal(v.count, 3);
+  assert.equal(v.count, 4); // aaa, bbb, ccc + the oldest pii fixture
   assert.equal(v.sessions[0].sessionId, "20260914-120000-ccccccc");
   assert.ok(v.sessions.every((s) => s.ready === true));
 });
