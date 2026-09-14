@@ -78,3 +78,44 @@ test("doctor reports all checks and its exit code matches failures", () => {
   assert.equal(code, failed === 0 ? 0 : 1);
   assert.equal(json.ok, failed === 0);
 });
+
+test("wait-ready refuses a launch record from another data root", () => {
+  const dir = path.join(os.tmpdir(), `r2s-launch-a-${process.pid}`);
+  const logs = path.join(dir, "logs");
+  mkdirSync(logs, { recursive: true });
+  writeFileSync(
+    path.join(logs, "launch.json"),
+    JSON.stringify({ startedAt: Date.now(), pid: 1, dataRoot: "/somewhere/else", sessionId: "20260914-100000-aaaaaaa", log: "x" }),
+  );
+  const r = runCli(["wait-ready", "1", "1"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /belongs to data root/);
+});
+
+test("wait-ready refuses an unconfirmed launch (no sessionId)", () => {
+  const dir = path.join(os.tmpdir(), `r2s-launch-b-${process.pid}`);
+  const logs = path.join(dir, "logs");
+  mkdirSync(logs, { recursive: true });
+  writeFileSync(
+    path.join(logs, "launch.json"),
+    JSON.stringify({ startedAt: Date.now(), pid: 1, dataRoot: dir, sessionId: null, log: "x" }),
+  );
+  const r = runCli(["wait-ready", "1", "1"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no confirmed session/);
+});
+
+test("wait-ready waits for the anchored session and honours the timeout", () => {
+  const dir = path.join(os.tmpdir(), `r2s-launch-c-${process.pid}`);
+  const logs = path.join(dir, "logs");
+  mkdirSync(logs, { recursive: true });
+  writeFileSync(
+    path.join(logs, "launch.json"),
+    JSON.stringify({ startedAt: Date.now(), pid: 1, dataRoot: dir, sessionId: "20260914-100000-missing0", log: "x" }),
+  );
+  const t0 = Date.now();
+  const r = runCli(["wait-ready", "1", "1"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 1);
+  assert.ok(Date.now() - t0 >= 900, "timeout should actually wait ~1s");
+  assert.match(r.stdout, /missing0 has no READY\.json/);
+});

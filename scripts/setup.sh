@@ -31,13 +31,33 @@ echo "==> Building vendor app (tsc + vite, produces dist-electron/main.js)..."
 
 ELECTRON_BIN="$VENDOR/node_modules/electron/dist/electron"
 if [ ! -f "$ELECTRON_BIN" ]; then
+  # Some npm setups (allow-scripts policies, --ignore-scripts) skip the
+  # electron postinstall. Run the official installer directly; it honors
+  # ELECTRON_MIRROR.
+  echo "==> electron binary missing (postinstall skipped?). Running electron's installer directly..."
+  (cd "$VENDOR" && node node_modules/electron/install.js)
+fi
+if [ ! -f "$ELECTRON_BIN" ]; then
   echo "ERROR: electron binary not found at $ELECTRON_BIN" >&2
-  echo "The electron postinstall download failed. Check network/proxy, then re-run: npm ci in $VENDOR" >&2
+  echo "The electron download failed. Check network/proxy or set ELECTRON_MIRROR, then re-run setup." >&2
   exit 1
 fi
 chmod +x "$ELECTRON_BIN" 2>/dev/null || true
 
-DATA_DIR="${RECORDER_DEMO_DATA_DIR:-$HOME/.recorder-demo}"
+# Data-root resolution mirrors scripts/recorder-cli.mjs: new env var, legacy
+# env var alias, then keep an existing legacy default dir (upgrades keep
+# their history), else the recorder2skill default.
+LEGACY_DATA_DIR="$HOME/.recorder-demo"
+DEFAULT_DATA_DIR="$HOME/.recorder2skill"
+if [ -n "${RECORDER2SKILL_DATA_DIR:-}" ]; then
+  DATA_DIR="$RECORDER2SKILL_DATA_DIR"
+elif [ -n "${RECORDER_DEMO_DATA_DIR:-}" ]; then
+  DATA_DIR="$RECORDER_DEMO_DATA_DIR"
+elif [ -d "$LEGACY_DATA_DIR" ]; then
+  DATA_DIR="$LEGACY_DATA_DIR"
+else
+  DATA_DIR="$DEFAULT_DATA_DIR"
+fi
 mkdir -p "$DATA_DIR/sessions" "$DATA_DIR/skills" "$DATA_DIR/logs"
 
 echo ""
@@ -46,10 +66,11 @@ echo "  vendor app : $VENDOR/dist-electron/main.js"
 echo "  data dir   : $DATA_DIR"
 echo ""
 echo "Next:"
-echo "  1. Set your model key (environment variable, not hardcoded):"
-echo '       export OPENCODE_API_KEY="<your OpenCode Zen key>"'
-echo "  2. Start the agent in this directory:  opencode"
-echo "  3. Say: start recording my screen, then turn it into a skill"
+echo "  1. Verify the install:  node scripts/recorder-cli.mjs doctor"
+echo "  2. Install the analysis skill into your agent (see README, step 2),"
+echo "     then set your model key for the agent itself (env, not hardcoded):"
+echo '       export AGNES_API_KEY="<your key>"   # default provider in opencode.json'
+echo "  3. Record:  node scripts/recorder-cli.mjs start"
 echo ""
 echo "Linux notes:"
 echo "  - X11 session recommended (Wayland needs XWayland; screen capture follows the"

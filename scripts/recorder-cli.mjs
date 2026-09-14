@@ -114,7 +114,9 @@ async function cmdStart() {
     },
   });
   closeSync(out);
-  writeFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: child.pid, log: recorderLog }, null, 2));
+  // Written immediately (overwriting any stale record) so wait-ready can tell
+  // "this launch never confirmed live" from "waiting on the launched session".
+  writeFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: child.pid, dataRoot, sessionId: null, log: recorderLog }, null, 2));
   child.unref();
 
   // The app writes logs/recording.json only once recording is REALLY live
@@ -147,6 +149,9 @@ async function cmdStart() {
 
   log(`recorder launched (pid ${child.pid}), overlay bar will appear; click Stop when done`);
   log(`recorder console log: ${recorderLog}`);
+  // Anchor the launch record on the confirmed session so wait-ready waits for
+  // THIS recording, never a stale one.
+  writeFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: child.pid, dataRoot, sessionId: recording.sessionId, log: recorderLog }, null, 2));
   process.stdout.write(
     JSON.stringify({
       ok: true,
@@ -235,16 +240,29 @@ function cmdWaitReady(timeoutSec = 600, pollSec = 2) {
   if (!existsSync(LAUNCH_FILE)) {
     die(`No launch record at ${LAUNCH_FILE}. Run "start" first.`);
   }
-  let startedAt;
+  let launch;
   try {
-    startedAt = JSON.parse(readFileSync(LAUNCH_FILE, "utf8")).startedAt;
+    launch = JSON.parse(readFileSync(LAUNCH_FILE, "utf8"));
   } catch {
     die(`Unreadable launch record at ${LAUNCH_FILE}. Re-run "start".`);
   }
+  if (launch.dataRoot && path.resolve(launch.dataRoot) !== path.resolve(dataRoot)) {
+    die(
+      `This launch record belongs to data root "${launch.dataRoot}", but this invocation resolved "${dataRoot}". ` +
+        "Set the same data-root environment variable (RECORDER2SKILL_DATA_DIR / RECORDER_DEMO_DATA_DIR) you used for \"start\".",
+    );
+  }
+  if (!launch.sessionId) {
+    die(
+      `The launch record has no confirmed session (recording never went live?). ` +
+        `Check ${launch.log || path.join(logsDir, "recorder.log")} for startup errors, then re-run "start".`,
+    );
+  }
+  const expectedDir = path.join(sessionsDir, launch.sessionId);
   const deadline = Date.now() + timeoutSec * 1000;
-  log(`waiting up to ${timeoutSec}s for the session to be stopped and processed...`);
+  log(`waiting up to ${timeoutSec}s for session ${launch.sessionId} to be stopped and processed...`);
   const tick = () => {
-    const dir = newestReadySince(startedAt);
+    const dir = existsSync(path.join(expectedDir, "READY.json")) ? expectedDir : null;
     if (dir) {
       const summary = readSessionSummary(dir);
       const meta = summary.session || {};
@@ -272,7 +290,7 @@ function cmdWaitReady(timeoutSec = 600, pollSec = 2) {
     }
     if (Date.now() > deadline) {
       process.stdout.write(
-        JSON.stringify({ ok: false, error: `No READY session within ${timeoutSec}s. Stop the recording on the overlay bar, or re-run wait-ready.` }) + "\n",
+        JSON.stringify({ ok: false, error: `Session ${launch.sessionId} has no READY.json within ${timeoutSec}s. Stop the recording on the overlay bar (or Ctrl+Shift+R); if it is already stopped, check ${launch.log || "the recorder log"}.` }) + "\n",
       );
       process.exit(1);
     }
