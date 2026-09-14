@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "copilotCli": "1.0.71",
+  "copilotSdk": "1.0.7",
+  "electron": {
+    "version": "43.1.1",
+    "ffmpegRevision": "ad41607c61898cf7150e0fb20fe4bbabd44922a3",
+    "distributions": {
+      "darwin-arm64": "d6d0598d042ef4d146278d08d84deac9dde145eae31eb4f32ef46206d6bd6169",
+      "darwin-x64": "82789f6fbba543f9c170dd3a0f053278eeda9b4818d51aea5467c4e500e79d51",
+      "linux-arm64": "30ed0b3672dd71672f6496fa0ba0c770ac7f8c6d9b38f01f615a6923b1541311",
+      "linux-x64": "c1f479c52747caf1510e17500e1c8a556d0e40802837bd48c5647a84688a3880",
+      "win32-arm64": "41a8cbea7f356ede97b5222c6f2a6da501e3ae8936a0ed053ae5fa9202ccd912",
+      "win32-x64": "b4e9995cd3f65785eb8818276aa9020f3165ab11da41b3c762616d4a0ad8c7ad"
+    },
+    "notices": {
+      "win32-x64": {
+        "LICENSE.electron.txt": "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d",
+        "LICENSES.chromium.html": "b911161e6594ec76b872498b423c54406168f2974e0d407a847f7de1e5ff94dd"
+      },
+      "win32-arm64": {
+        "LICENSE.electron.txt": "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d",
+        "LICENSES.chromium.html": "b911161e6594ec76b872498b423c54406168f2974e0d407a847f7de1e5ff94dd"
+      },
+      "darwin-arm64": {
+        "LICENSE.electron.txt": "5154e165bd6c2cc0cfbcd8916498c7abab0497923bafcd5cb07673fe8480087d",
+        "LICENSES.chromium.html": "4fc0507a046b9ecd0738b2dd64119b5ec8bc29ac0221b63edb693fd5fd497c87"
+      }
+    }
+  },
+  "sharp": "0.35.3",
+  "sharpLibvips": {
+    "version": "1.3.2"
+  },
+  "secretlint": "13.0.4",
+  "artisticPackages": {
+    "binaryextensions": "6.11.0",
+    "editions": "6.22.0",
+    "istextorbinary": "9.5.0",
+    "textextensions": "6.11.0",
+    "version-range": "4.15.0"
+  },
+  "tesseract": {
+    "jsVersion": "7.0.0",
+    "coreVersion": "7.0.0",
+    "sourceRevisions": {
+      "core": "acffef2b66eb44a31df297e11d905f4b39001068",
+      "giflib": "fa37672085ce4b3d62c51627ab3c8cf2dda8009a",
+      "leptonica": "4af068b56a9674da915debea4ed7e1b9885b17e8",
+      "libjpeg": "6c0fcb8ddee365e7abc4d332662b06900612e923",
+      "libpng": "a37d4836519517bdce6cb9d956092321eca3e73b",
+      "libtiff": "b51bb157123264e26d34c09cc673d213aea61fc7",
+      "libwebp": "20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c",
+      "openlibm": "ae2d91698508701c83cab83714d42a1146dccf85",
+      "tesseract": "2a9c1c49c360462733c386d2a44fcd22c4e21411",
+      "zlib": "21767c654d31d2dccdde4330529775c6c5fd5389"
+    },
+    "tessdata": {
+      "revision": "65727574dfcd264acbb0c3e07860e4e9e9b22185",
+      "files": {
+        "eng.traineddata": "7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2"
+      }
+    }
+  },
+  "onnxruntime": {
+    "1.24.3": "v1.24.3",
+    "1.24.0-dev.20251116-b39e144322": "b39e144322",
+    "1.26.0-dev.20260416-b7804b056c": "b7804b056c"
+  },
+  "remoteMaterials": {
+    "artistic-2.0": "bae466ac8d7100c304fe76632ccc627203a3897d3f7166f3cce00fb9df8c2074",
+    "gpl-3.0": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+    "lgpl-2.1": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861",
+    "lgpl-3.0": "a853c2ffec17057872340eee242ae4d96cbf2b520ae27d903e1b2fef1a5f9d1c",
+    "mpl-2.0": "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5",
+    "onnxruntime-1.24.0-dev.20251116-b39e144322-license": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+    "onnxruntime-1.24.0-dev.20251116-b39e144322-notices": "e9e90971a8e75a9a8ac0c6412e29c1202d079998389915aa485f46c816c3b4cc",
+    "onnxruntime-1.24.3-license": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+    "onnxruntime-1.24.3-notices": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
+    "onnxruntime-1.26.0-dev.20260416-b7804b056c-license": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+    "onnxruntime-1.26.0-dev.20260416-b7804b056c-notices": "0e07b95f3a8d6230037707c5c4a2b554d12c4cb67369669ac255635528ffcee2",
+    "tessdata-fast-license": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "tesseract-core-giflib-license": "0c9b7990ecdca88b676db232c226548ac408b279f550d424d996f0d83591dd8e",
+    "tesseract-core-leptonica-license": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806",
+    "tesseract-core-libjpeg-license": "c791da525733040e622ed257c7b096b8f5191b332604ead0c6bc2b54cbd8e0d1",
+    "tesseract-core-libpng-license": "33ba4e187d8b0c8d7ab2bc2e522bb095219e03089e9aa0122b4fb9eb2b7de82b",
+    "tesseract-core-libtiff-license": "fbd6fed7938541d2c809c0826225fc85e551fdbfa8732b10f0c87e0847acafd7",
+    "tesseract-core-libwebp-license": "5aec868f669e384a22372a4e8a1a6cd7d44c64cd451f960ca69cc170d1e13acf",
+    "tesseract-core-openlibm-license": "b1843fbf5b03f519a5f0a44fce751bdd1022ae7148614923f9d6293e17a18b17",
+    "tesseract-core-tesseract-license": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "tesseract-core-zlib-license": "fc2c3368901700f0acdeb1d8afeaca5923296768ec6824ecdf627aac396001fd"
+  },
+  "sourceCommits": {
+    "mozjpeg@0826579": "08265790774cd0714832c9e675522acbe5581437",
+    "tiff@732665c": "732665c2c8785cec3e1f46ba9908575f0f3a8059",
+    "tiff@d01a94b": "d01a94be176f5f6a87f7ee1c0b32e65416aa2b4d",
+    "uhdr@13a058f": "13a058f452d846e43d4691f6885eeeaa8b0ea8d0",
+    "uhdr@1acdbed": "1acdbed8c712e6923ebf9de4e7c8d8dda06509e9"
+  },
+  "sourceMaterials": {
+    "electron": "9fa9a84bc0ee0aab5ec7f46de991dc55904e634fb566a75bb3f93599c861c46a",
+    "electron-ffmpeg": "e84618cc968bb2895ad494c86943c020b242a74f905fc412653c1068a37ea640",
+    "electron-ffmpeg-patch-link-with-loader-path": "849b0fbef990623b0caf187c75a3f31f53ed4390e5770196d47880056b53dc7e",
+    "libvips-windows-build": "05c9f3708ce8afe820d4a401e8b270e30c8bd6270e75a6cfb97f918f2f087962",
+    "sharp": "0217f802064e589131536bdac8d1beb5b8a40953d1f066771204a0e5956750e6",
+    "sharp-libvips-build": "ac2f07da237416598c5e8b85e6d4c2ff5da87e5c818744daf7634645d2e0f337",
+    "sharp-native-aom@3.14.1": "44bf90dbd23e734d50e70a8c41c285193922938bd0d3bc2ee56764d181d55ef5",
+    "sharp-native-archive@3.8.7": "d3a8ba457ae25c27c84fd2830a2efdcc5b1d40bf585d4eb0d35f47e99e5d4774",
+    "sharp-native-archive@3.8.8": "3873a88801da067d0528a989af06877710529d50ee8fe6f3970cbb4302efb918",
+    "sharp-native-cairo@1.18.4": "445ed8208a6e4823de1226a74ca319d3600e83f6369f99b14265006599c32ccb",
+    "sharp-native-cgif@0.5.3": "dcc7731e974ee77db75df26c99aca4d95f11ca2d267d870d42bce1e0d1e1e75f",
+    "sharp-native-exif@0.6.26": "4a055ed6575e61ca46c3172be3c753cc16c9becd0f99ec71d58dd0e471476c0c",
+    "sharp-native-expat@2.8.1": "10b195ee78160a908388180a8fe3603d4e9a12f4755fbf5f3816b23a9d750da0",
+    "sharp-native-expat@2.8.2": "3ad89b8588e6644bd4e49981480d48b21289eebbcd4f0a1a4afb1c29f99b6ab4",
+    "sharp-native-ffi@3.5.2": "f3a3082a23b37c293a4fcd1053147b371f2ff91fa7ea1b2a52e335676bac82dc",
+    "sharp-native-ffi@3.6.0": "31ff1fe32deaebfbb388727f32677bb254bf2a41382c51464c0b1837c9ee9828",
+    "sharp-native-fontconfig@2.18.1": "e9309564717b6301230112b173f36c288489479d381d2f0add1210ca5b16ba7e",
+    "sharp-native-freetype@2.14.3": "dc49de6b01a266eef4876a4dd34d9842c475d3e28ff2eff63bd2fb760ab56261",
+    "sharp-native-fribidi@1.0.16": "1b1cde5b235d40479e91be2f0e88a309e3214c8ab470ec8a2744d82a5a9ea05c",
+    "sharp-native-glib@2.89.0": "205bf5dab175de68f11e33be7bb36d4ad4c5a5097d8c0c88a8682b257b6293dc",
+    "sharp-native-glib@2.89.1": "74447129c31afe141810f995626e8b99ab677413dae76ee3cf5a9cc6e75a486e",
+    "sharp-native-harfbuzz@14.2.1": "3c2a9006a7e1bf58737e557014d7882c554c628fb379a9f00008f5ea53dbbdfb",
+    "sharp-native-heif@1.23.0": "4c9182b18897617182eed12ab5eb9f9d855b3aa3a736d6bdb31abc034ec7d393",
+    "sharp-native-heif@1.23.1": "0de0327f60fcd47de90d5654c6fe152232738d60d84fe084ec3e0f35e03b166a",
+    "sharp-native-highway@1.4.0": "e72241ac9524bb653ae52ced768b508045d4438726a303f10181a38f764a453c",
+    "sharp-native-imagequant@2.4.1": "47d2a84b7b1052975c9d50a3d4e3cacbf57b43d84a4c3131210848ead9964dfb",
+    "sharp-native-lcms@2.19.1": "bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8",
+    "sharp-native-mozjpeg@0826579": "7181e99a96c62a426293c09f37c94e2637a6af86e7729f5ab75891c85e9cfd2a",
+    "sharp-native-pango@1.57.1": "e65d6d117080dc3aeeb7d8b4b3b518f7383aa2e6cfce23117c623cd624764c2f",
+    "sharp-native-pango@1.58.0": "bc5bad6213ad4886a47d1e80292fd850b64159b50db67917a43d9ea80ee2298a",
+    "sharp-native-pixman@0.46.4": "d09c44ebc3bd5bee7021c79f922fe8fb2fb57f7320f55e97ff9914d2346a591c",
+    "sharp-native-png@1.6.58": "a9d4df463d36a6e5f9c29bd6f4967312d17e996c1854f3511f833924eb1993cf",
+    "sharp-native-proxy-libintl@0.5": "f7a1cbd7579baaf575c66f9d99fb6295e9b0684a28b095967cfda17857595303",
+    "sharp-native-rsvg@2.62.3": "7eb449b2722a768021356f66dfee3202c229b54ed4e6a70ce40c090e97ff16f2",
+    "sharp-native-rsvg@2.62.90": "5d108758255c225590d862d94f2591ee1f8cc976dc7b25b06eaba74f21850f08",
+    "sharp-native-tiff@732665c": "9266662c24df398fc113d453f8eaf3347e7be47004b0f451b425740ee6dfcec4",
+    "sharp-native-tiff@d01a94b": "c040cf975f30f74fa586700ce3b5191bc6543b696ed2c99f62c53399960a4ea2",
+    "sharp-native-uhdr@13a058f": "c4855df878f1b2f5a451a4206a9fff555549e14a1dd4c6552d2539e89df965b2",
+    "sharp-native-uhdr@1acdbed": "42b7276e3d7387ca0cdfd93da63f31e163f2c521aef5d165c2cd3bf9ed84c976",
+    "sharp-native-vips@8.18.3": "f41285b61bfb495605494f074ca341f7791a1d406e2f157dcea606ef1ae1b146",
+    "sharp-native-webp@1.6.0": "e4ab7009bf0629fd11982d4c2aa83964cf244cffba7347ecd39019a9e38c4564",
+    "sharp-native-xml2@2.15.3": "78262a6e7ac170d6528ebfe2efccdf220191a5af6a6cd61ea4a9a9a5042c7a07",
+    "sharp-native-zlib-ng@2.3.3": "f9c65aa9c852eb8255b636fd9f07ce1c406f061ec19a2e7d508b318ca0c907d1",
+    "sharp-patch-glib-without-gregex": "b1f2930a11292e529de137c7eb723850e0cc0969b1a2b0358196389312acd272",
+    "sharp-patch-libvips-soversion": "256b7d6f8c973bb53b20cff5171c7117d6b35d3aa4e72d22cb906f4fe1e2c890",
+    "sharp-patch-mozjpeg-simd-fdct": "a65f87cadf3a6052e44d6314c906f6e2891352f82646b8a6f0b8fcf2c1891e7c",
+    "sharp-patch-uhdr-platform-detection": "e0106f9458626f6745a9a9a3841478b7a42f6905f67373d19f6f9b897c33ada5",
+    "npm-source-binaryextensions@6.11.0": "52904eaa521067a062c75c601b47eb055474298ade50d6509458cd3157eb01bd",
+    "npm-source-editions@6.22.0": "ad07726331c2c4ffe29ff4d6744dcbae664ec4693a1b73c54be1b6835a79272e",
+    "npm-source-istextorbinary@9.5.0": "9a37f144a9742a1d2bac9fb5abff38009406b3e0d4abf6ab5a8369b09c44ef1a",
+    "npm-source-textextensions@6.11.0": "76194efbd484b3ac3be4cdc0d649ba8b9c0e154a53062ac067348e469cc66c09",
+    "npm-source-version-range@4.15.0": "fe26fd34a2432f197b89833c8e1e2807b1a7bec17cd8a7fb27956bab251a6d1a",
+    "tesseract-js-core@7.0.0": "b1af71435fc45cd5d9f3f9342b28f2ba649de4661a0fb2933da727a5648be262",
+    "tesseract-core-giflib@fa37672085ce4b3d62c51627ab3c8cf2dda8009a": "99067b2e3f4bfc3b95770a56e9def1daac843ecb6be5480cb776757b606ac076",
+    "tesseract-core-leptonica@4af068b56a9674da915debea4ed7e1b9885b17e8": "f889351f7df174ae9c15f27784b106310a1356d9152537543a334df08fd92961",
+    "tesseract-core-libjpeg@6c0fcb8ddee365e7abc4d332662b06900612e923": "79b3dc9496f015a5562f9170aabd0526b3efc5b5b8f71d9379c54d4d882a6099",
+    "tesseract-core-libpng@a37d4836519517bdce6cb9d956092321eca3e73b": "2429c23e583db954e5f8e8b92638a118bb8902f4d993ecfe0ce34b8afd05f507",
+    "tesseract-core-libtiff@b51bb157123264e26d34c09cc673d213aea61fc7": "e1e754ed88de9370637aecf75f36e31d77adccf6c0fab441816895dc92975a12",
+    "tesseract-core-libwebp@20ef03ee351d4ff03fc5ff3ec4804a879d1b9d5c": "397362f82d42c5577705979557f08d611d86e07abcaeeb66b78629df587f1df7",
+    "tesseract-core-openlibm@ae2d91698508701c83cab83714d42a1146dccf85": "7994b52a180357322559cafb745f03c5c1ee8f2f38c28bad1e224ce2a0221d7f",
+    "tesseract-core-tesseract@2a9c1c49c360462733c386d2a44fcd22c4e21411": "e021944185ecb88c2f003e706b5c416e7bef6074d4d8be39f6c98fe0695b24a8",
+    "tesseract-core-zlib@21767c654d31d2dccdde4330529775c6c5fd5389": "f1cdebb848d8110eba6773a481fd92cd34104f4b27deac5f7cf59b445a05f857"
+  }
+}

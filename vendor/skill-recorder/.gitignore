@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-electron
+release
+.compliance
+.compliance-cache
+.compliance-review
+*.log
+.DS_Store
+
+# Eval run outputs (timestamped result logs)
+evals/results/
+# Opt-in OCR eval's downloaded traineddata cache
+evals/.cache/
