@@ -1,0 +1,6 @@
+{
+  "name": "tesseract.js-core",
+  "version": "0.0.0-demo-stub",
+  "description": "[RECORDER-DEMO] Placeholder so the dependency graph stays consistent while tesseract.js itself is stubbed. Never loaded by the demo.",
+  "main": "index.js"
+}

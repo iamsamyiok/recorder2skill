@@ -1,0 +1,7 @@
+{
+  "name": "@huggingface/transformers",
+  "version": "0.0.0-demo-stub",
+  "description": "[RECORDER-DEMO] Stub replacing @huggingface/transformers (~340MB with onnxruntime runtimes). Only narration (off by default, not part of the demo) imports it, and only dynamically at call time. Throws clearly if ever touched.",
+  "type": "module",
+  "main": "index.mjs"
+}

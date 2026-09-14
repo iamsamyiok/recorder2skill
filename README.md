@@ -1,11 +1,14 @@
-# Recorder Demo Skill (Windows + Linux)
+# recorder2skill (Windows + Linux)
 
-Record a task once on screen, then let OpenCode turn it into a standard
+Record a task once on screen, then let your agent turn it into a standard
 `SKILL.md` — a minimal, Windows/Linux derivative of
 [microsoft/skill-recorder](https://github.com/microsoft/skill-recorder) (MIT).
 
-The recording core is the original project, vendored unmodified except for one
-marked bootstrap patch (see [PATCHES.md](PATCHES.md)):
+Works with ANY agent that can run shell commands and read files (OpenCode,
+Claude Code, Codex, ...): every recorder operation is a plain CLI command, and
+`skill/recorder2skill/SKILL.md` is a standard Agent Skills file that teaches
+the agent the whole flow. The recording core is the original project, vendored
+unmodified except for marked bootstrap patches (see [PATCHES.md](PATCHES.md)):
 
 - screen + window recording (Chromium capture, always-on-top control bar with
   Stop),
@@ -15,21 +18,27 @@ marked bootstrap patch (see [PATCHES.md](PATCHES.md)):
   extraction with perceptual-hash (dHash) dedupe, event correlation, timeline
   `bundle.json`.
 
-What changed: the original's GitHub Copilot describer/skill-builder is
-REPLACED by OpenCode. A plugin registers custom tools via the OpenCode plugin
-SDK; the OpenCode agent (its own model interface) does the step splitting and
-semantic mapping, then writes the standard `SKILL.md`.
+What changed vs. the original:
+
+- The GitHub Copilot describer/skill-builder is REPLACED by your agent. All
+  recorder operations are exposed as `scripts/recorder-cli.mjs` subcommands
+  (plain JSON on stdout), so any agent can drive the flow over shell; the
+  agent does the step splitting and semantic mapping and writes the standard
+  `SKILL.md`.
+- Three heavy optional-feature dependencies the demo never uses (Copilot SDK,
+  transformers/onnx, tesseract OCR) are swapped for loud-failing local stubs —
+  ~970 MB less to download (see PATCHES.md).
 
 ```
-┌─────────────┐   recorder_start    ┌──────────────────────────────────┐
-│ OpenCode    │ ──────────────────► │ vendor/skill-recorder (Electron) │
-│ agent       │                     │ control bar pops up -> user works │
-│ (model via  │                     │ -> user clicks Stop -> pipeline   │
-│ env key)    │ ◄────────────────── │ -> READY.json                     │
-└────┬────────┘  recorder_wait_ready└──────────────────────────────────┘
-     │  recorder_get_timeline / get_events / list_frames
+┌─────────────┐  cli start / wait-ready ┌──────────────────────────────────┐
+│ your agent  │ ──────────────────────► │ vendor/skill-recorder (Electron) │
+│ (any agent; │                         │ control bar pops up -> user works │
+│ model via   │                         │ -> user clicks Stop -> pipeline   │
+│ env key)    │ ◄────────────────────── │ -> READY.json                     │
+└────┬────────┘  cli timeline / events /└──────────────────────────────────┘
+     │           frames (JSON)
      ▼
- SKILL.md -> recorder_save_skill -> <data-root>\skills\<name>\SKILL.md
+  agent writes SKILL.md -> cli save-skill -> <data-root>\skills\<name>\SKILL.md
 ```
 
 ## Requirements
@@ -39,10 +48,11 @@ semantic mapping, then writes the standard `SKILL.md`.
   switches + window titles + clipboard (URL capture is macOS/Windows in the
   vendor); X11 is the smooth path, Wayland via XWayland.
 - Node.js 24.x (the vendored recorder pins `>=24.19 <25`)
-- OpenCode CLI
-- An LLM API key for one of the configured providers — read from the
-  environment, never hardcoded. Defaults to Agnes AI (`AGNES_API_KEY`,
-  see `opencode.json`); OpenCode Zen (`OPENCODE_API_KEY`) also works.
+- Any agent that can run shell commands and read files (required), or
+  optionally the OpenCode CLI for the integrated plugin experience
+- An LLM API key for your agent as usual (this repo ships an OpenCode config
+  defaulting to Agnes AI via `AGNES_API_KEY`; keys live in the environment,
+  never in files)
 
 ## Layout
 
@@ -73,6 +83,10 @@ cd ~/recorder-demo             # Linux
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1   # Windows
 bash scripts/setup.sh                                        # Linux
 
+#    Slow network? The big download is the Electron binary (~100 MB). Point
+#    it at a mirror first, then re-run setup:
+export ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/
+
 # 3. Provide the model key as an environment variable (session-scoped)
 $env:AGNES_API_KEY = "<your Agnes key>"        # default provider (opencode.json)
 $env:OPENCODE_API_KEY = "<your Zen key>"       # optional alternative
@@ -86,24 +100,36 @@ OpenAI-compatible); `/models` lists it plus any other configured providers
 (e.g. OpenCode Zen). Keys come from environment variables; `opencode.json`
 pins no credentials.
 
-## Run it
+## Use it with any agent
 
-Say to the agent:
+Install the bundled skill into your agent's skills directory:
+
+```bash
+# OpenCode (project or global)
+cp -r skill/recorder2skill  yourproject/.opencode/skill/
+cp -r skill/recorder2skill  ~/.config/opencode/skill/
+
+# Claude Code / other Agent Skills consumers
+cp -r skill/recorder2skill  yourproject/.claude/skills/
+```
+
+Then tell the agent:
 
 > start recording my screen; I'll do the task, then turn it into a skill
 
-The agent will:
+The skill instructs the agent to drive everything through the CLI (each
+command prints JSON):
 
-1. call `recorder_start` — the recorder window + floating control bar pop up
-   and recording begins,
-2. wait while you do the task; click **Stop** on the bar (or `Ctrl+Shift+R`)
-   when done,
-3. call `recorder_wait_ready` — picks up the processed session (timeline,
-   events, frames, dedupe stats),
-4. read the timeline/events (and a few frames only where ambiguous), split
-   the session into intent + ordered steps, map each step to native tools,
-5. call `recorder_save_skill` — writes
-   `<data-root>\skills\<name>\SKILL.md` and reports the path.
+```bash
+node scripts/recorder-cli.mjs start            # launch; returns once recording is live
+# ... user does the task, clicks Stop (or Ctrl+Shift+R) ...
+node scripts/recorder-cli.mjs wait-ready 600   # blocks until the session is processed
+node scripts/recorder-cli.mjs timeline         # ordered steps (atMs, apps, clipboard, frames)
+node scripts/recorder-cli.mjs events           # captured events (--types / --from / --to / --limit)
+node scripts/recorder-cli.mjs frames           # kept frames (JPEG paths + phash + reason)
+node scripts/recorder-cli.mjs save-skill <name> --description "..." \
+  --body-file body.md --tools "Bash(git *),webfetch"   # writes SKILL.md
+```
 
 Success = the SKILL.md exists on disk and is a valid Agent Skills file
 (YAML frontmatter `name`/`description`/`allowed-tools` + imperative body).
@@ -128,14 +154,14 @@ covering any token-staging flow (xclip/wl-copy, verification, cleanup), with
 trip works for multi-step browser/IDE tasks: apps, titles, URLs and clipboard
 text give the intent; frames settle anything the events leave ambiguous.
 
-### CLI-only usage (without the agent)
+### Use with OpenCode (integrated plugin)
 
-```powershell
-node scripts\recorder-cli.mjs start          # launch + autostart recording
-# ... do the task, click Stop on the floating bar ...
-node scripts\recorder-cli.mjs wait-ready 600 # block until processed
-node scripts\recorder-cli.mjs last           # newest session summary
-```
+This repo also ships an OpenCode plugin (`.opencode/plugins/recorder-demo.ts`)
+registering the same operations as native `recorder_*` tools, plus an
+`AGENTS.md` brief and a provider config (default model
+`agnes/agnes-2.5-flash` via `AGNES_API_KEY`). Launch `opencode` in the project
+root and use the same conversation flow — the agent calls the tools directly
+instead of shelling out.
 
 ## Data locations
 

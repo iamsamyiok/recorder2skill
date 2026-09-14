@@ -1,12 +1,19 @@
 #!/usr/bin/env node
-// Recorder Demo CLI — Windows-only bridge between the OpenCode plugin tools and
-// the vendored microsoft/skill-recorder Electron app (MIT, see PATCHES.md).
+// Recorder2Skill CLI — the agent-agnostic bridge to the vendored
+// microsoft/skill-recorder Electron app (MIT, see PATCHES.md). Every control
+// and read operation is a plain shell command, so ANY agent that can run
+// shell (OpenCode, Claude Code, Codex, ...) can drive the full flow.
 //
 // Commands (all print JSON on stdout, human logs on stderr):
 //   start                     launch the recorder app in demo mode (autostarts recording)
 //   wait-ready [timeoutSec]   poll for the READY.json marker of the current launch
 //   last                      summarize the newest session on disk
 //   summary <sessionId>       summarize one session
+//   sessions                  list all sessions (newest first)
+//   timeline [sessionId]      ordered steps of the processed session (atMs = ms since start)
+//   events [sessionId]        captured events; --types a,b to widen (default: meaningful only)
+//   frames [sessionId]        kept screen frames (JPEG paths + phash + reason)
+//   save-skill <name>         write SKILL.md from --description + --body-file (+ --tools)
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync, writeSync } from "node:fs";
 import os from "node:os";
@@ -292,12 +299,245 @@ function isValidSessionId(id) {
   return typeof id === "string" && id.length <= 128 && !id.includes("..") && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id);
 }
 
+// ---------------------------------------------------------------------------
+// Universal read/save commands — let ANY agent (or script) drive the whole
+// flow over plain shell, mirroring the OpenCode plugin tool semantics.
+// ---------------------------------------------------------------------------
+
+/** Mirrors vendor common/correlation MEANINGFUL_EVENT_TYPES (kept in sync). */
+const MEANINGFUL_EVENT_TYPES = new Set([
+  "app.activate",
+  "app.title-change",
+  "browser.url",
+  "terminal.command",
+  "clipboard.change",
+  "marker",
+]);
+
+function resolveTargetSession(idOrUndefined) {
+  if (idOrUndefined !== undefined) {
+    if (!isValidSessionId(idOrUndefined) || !existsSync(path.join(sessionsDir, idOrUndefined, "session.json"))) {
+      die(`Unknown session: ${idOrUndefined}`);
+    }
+    return { id: idOrUndefined, dir: path.join(sessionsDir, idOrUndefined) };
+  }
+  const dirs = listSessionDirs();
+  if (!dirs.length) die(`No sessions under ${sessionsDir}`);
+  return { id: path.basename(dirs[0]), dir: dirs[0] };
+}
+
+function readJsonIn(dir, file) {
+  const p = path.join(dir, file);
+  if (!existsSync(p)) return null;
+  try {
+    return JSON.parse(readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function cmdSessions() {
+  const dirs = listSessionDirs();
+  const sessions = dirs.map((dir) => {
+    const id = path.basename(dir);
+    const meta = readJsonIn(dir, "session.json") ?? {};
+    const bundle = readJsonIn(dir, "bundle.json");
+    const manifest = readJsonIn(path.join(dir, "frames"), "frames.json");
+    return {
+      sessionId: id,
+      startedAt: meta.startedAt ?? 0,
+      stoppedAt: meta.stoppedAt ?? null,
+      ready: existsSync(path.join(dir, "READY.json")),
+      eventCount: bundle?.stats?.eventCount ?? 0,
+      stepCount: bundle?.stats?.stepCount ?? 0,
+      frameCount: Array.isArray(manifest) ? manifest.length : (manifest?.frames?.length ?? 0),
+      dir,
+    };
+  });
+  process.stdout.write(JSON.stringify({ ok: true, count: sessions.length, sessions }, null, 2) + "\n");
+}
+
+function cmdTimeline(sessionIdOrUndefined) {
+  const { id, dir } = resolveTargetSession(sessionIdOrUndefined);
+  const bundle = readJsonIn(dir, "bundle.json");
+  const meta = readJsonIn(dir, "session.json");
+  if (!bundle || !meta) {
+    die(`Session ${id} has no processed bundle yet (recording still running or processing). Run wait-ready first.`);
+  }
+  const steps = (bundle.steps ?? []).map((s) => ({
+    index: s.index,
+    atMs: s.startMs - meta.startedAt,
+    durationMs: s.durationMs,
+    boundary: s.boundary,
+    app: s.app,
+    titles: s.titles ?? [],
+    hosts: s.hosts ?? [],
+    urls: s.urls ?? [],
+    commands: s.commands ?? [],
+    clipboardCount: s.clipboardCount ?? 0,
+    markers: s.markers ?? [],
+    frameCount: (s.frames ?? []).length,
+    summary: s.summary,
+  }));
+  process.stdout.write(
+    JSON.stringify(
+      {
+        ok: true,
+        sessionId: id,
+        durationMs: bundle.session?.durationMs ?? (meta.stoppedAt ?? 0) - meta.startedAt,
+        platform: bundle.session?.platform ?? meta.platform,
+        stats: bundle.stats ?? {},
+        steps,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
+function cmdEvents(sessionIdOrUndefined, opts) {
+  const { id, dir } = resolveTargetSession(sessionIdOrUndefined);
+  const meta = readJsonIn(dir, "session.json");
+  const eventsPath = path.join(dir, "events.jsonl");
+  if (!existsSync(eventsPath)) die(`Session ${id} has no events yet.`);
+  const startedAt = meta?.startedAt ?? 0;
+  const requested = (opts.types ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+  const meaningfulOnly = requested.length === 0 && !opts.all;
+  let events = readFileSync(eventsPath, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .map(({ payload, ...rest }) => ({ ...rest, atMs: rest.epoch - startedAt, ...(payload ?? {}) }));
+  const total = events.length;
+  if (meaningfulOnly) events = events.filter((e) => MEANINGFUL_EVENT_TYPES.has(e.type));
+  else if (requested.length) events = events.filter((e) => requested.includes(e.type));
+  if (opts.from !== undefined) events = events.filter((e) => e.atMs >= opts.from);
+  if (opts.to !== undefined) events = events.filter((e) => e.atMs <= opts.to);
+  const limit = opts.limit ?? 500;
+  const truncated = events.length > limit;
+  events = events.slice(0, limit);
+  process.stdout.write(
+    JSON.stringify({ ok: true, sessionId: id, count: events.length, total, truncated, events }, null, 2) + "\n",
+  );
+}
+
+function cmdFrames(sessionIdOrUndefined) {
+  const { id, dir } = resolveTargetSession(sessionIdOrUndefined);
+  const framesDir = path.join(dir, "frames");
+  const manifest = readJsonIn(framesDir, "frames.json");
+  const items = Array.isArray(manifest) ? manifest : (manifest?.frames ?? []);
+  if (items.length === 0) {
+    process.stdout.write(JSON.stringify({ ok: true, sessionId: id, hasVideo: false, frames: [] }, null, 2) + "\n");
+    return;
+  }
+  const startedAt = readJsonIn(dir, "session.json")?.startedAt ?? 0;
+  process.stdout.write(
+    JSON.stringify(
+      {
+        ok: true,
+        sessionId: id,
+        framesDir,
+        frames: items.map((f) => ({
+          path: path.join(framesDir, f.file),
+          atMs: f.tMs - startedAt,
+          phash: f.phash,
+          source: f.source,
+          reason: f.reason,
+        })),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
+function slugifySkillName(name) {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || "recorded-skill"
+  );
+}
+
+function cmdSaveSkill(name, opts) {
+  if (!opts.description) die("save-skill requires --description \"what it does + when to use it\".");
+  const bodyFile = opts.bodyFile ?? opts["body-file"];
+  if (!bodyFile) die("save-skill requires --body-file <markdown file with the instructions body>.");
+  if (!existsSync(bodyFile)) die(`Body file not found: ${bodyFile}`);
+  const slug = slugifySkillName(String(name ?? ""));
+  const skillsDir = path.join(dataRoot, "skills");
+  const outDir = path.join(skillsDir, slug);
+  mkdirSync(outDir, { recursive: true });
+  const lines = ["---", `name: ${slug}`, `description: ${JSON.stringify(String(opts.description).trim())}`];
+  const tools = String(opts.tools ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (tools.length) {
+    lines.push("allowed-tools:");
+    for (const t of tools) lines.push(`  - ${t}`);
+  }
+  lines.push("---", "", readFileSync(bodyFile, "utf8").trim(), "");
+  const outPath = path.join(outDir, "SKILL.md");
+  writeFileSync(outPath, lines.join("\n"));
+  process.stdout.write(JSON.stringify({ ok: true, skill: slug, path: outPath }, null, 2) + "\n");
+}
+
+function parseOpts(argv) {
+  const opts = {};
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith("--")) {
+      const key = a.slice(2);
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith("--")) {
+        opts[key] = true;
+      } else {
+        opts[key] = next;
+        i++;
+      }
+    } else {
+      positional.push(a);
+    }
+  }
+  return { opts, positional };
+}
+
 const [cmd, ...args] = process.argv.slice(2);
 if (cmd === "start") cmdStart();
 else if (cmd === "wait-ready") cmdWaitReady(Number(args[0]) || 600, Number(args[1]) || 2);
 else if (cmd === "last") cmdLast();
 else if (cmd === "summary" && args[0]) cmdSummary(args[0]);
-else {
-  process.stderr.write("Usage: recorder-cli.mjs start | wait-ready [timeoutSec] | last | summary <sessionId>\n");
+else if (cmd === "sessions") cmdSessions();
+else if (cmd === "timeline") cmdTimeline(args[0]);
+else if (cmd === "events") {
+  const { opts, positional } = parseOpts(args);
+  cmdEvents(positional[0], {
+    types: opts.types,
+    all: opts.all === true,
+    from: opts.from !== undefined ? Number(opts.from) : undefined,
+    to: opts.to !== undefined ? Number(opts.to) : undefined,
+    limit: opts.limit !== undefined ? Number(opts.limit) : undefined,
+  });
+} else if (cmd === "frames") cmdFrames(args[0]);
+else if (cmd === "save-skill") {
+  const { opts, positional } = parseOpts(args);
+  cmdSaveSkill(positional[0], opts);
+} else {
+  process.stderr.write(
+    "Usage: recorder-cli.mjs start | wait-ready [timeoutSec] | last | summary <sessionId> |\n" +
+      "                  sessions | timeline [sessionId] | events [sessionId] [--types a,b] [--all] [--from ms] [--to ms] [--limit n] |\n" +
+      "                  frames [sessionId] | save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"]\n",
+  );
   process.exit(2);
 }

@@ -1,0 +1,7 @@
+{
+  "name": "tesseract.js",
+  "version": "0.0.0-demo-stub",
+  "description": "[RECORDER-DEMO] Stub replacing tesseract.js (~44MB core). Only Advanced-protection OCR (opt-in, not part of the demo) imports it, and only dynamically at call time. Throws clearly if ever touched.",
+  "type": "module",
+  "main": "index.mjs"
+}

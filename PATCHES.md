@@ -51,6 +51,27 @@ Subfolders: `sessions\`, `skills\`, `logs\`. The sessions root is pointed
 there through the original project's own `SKILL_RECORDER_SESSIONS_DIR`
 environment variable (no code change needed for storage).
 
+## 3. `package.json` + `demo-stubs/` — heavy optional deps replaced by local stubs
+
+Three dependencies whose features the demo never uses account for ~970 MB of
+`npm install` (and most of its wall time). They are swapped for tiny local
+packages under `demo-stubs/` via plain dependency-spec changes (no `npm
+overrides`), so the lockfile stays honest:
+
+| Replaced | Stub | Real feature (unused by the demo) | Saved |
+| --- | --- | --- | --- |
+| `@github/copilot-sdk` | `demo-stubs/copilot-sdk` | Copilot describer / skill builder | ~587 MB |
+| `@huggingface/transformers` | `demo-stubs/huggingface-transformers` | Narration transcription (off by default) | ~340 MB incl. onnxruntime |
+| `tesseract.js` + `tesseract.js-core` | `demo-stubs/tesseract.js`, `demo-stubs/tesseract.js-core` | Advanced-protection OCR (opt-in) | ~44 MB |
+
+Each stub keeps the exact import surface the vendored code touches (named
+exports, ESM where the importer is ESM, `.d.ts` for the compiler) and throws
+a loud, specific error if its feature is ever actually invoked, so a
+misconfiguration cannot fail silently. The recording / frame-extraction /
+dHash-dedupe / event-collection / bundling pipeline never touches these
+packages; a full record-to-READY session was re-validated with the stubs in
+place.
+
 ## Platform notes (demo layer, no vendor changes)
 
 - The vendor natively supports macOS and Ubuntu (`install.sh`); the demo

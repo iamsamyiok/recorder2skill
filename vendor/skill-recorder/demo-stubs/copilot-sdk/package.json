@@ -1,0 +1,6 @@
+{
+  "name": "@github/copilot-sdk",
+  "version": "0.0.0-demo-stub",
+  "description": "[RECORDER-DEMO] Startup-safe stub replacing @github/copilot-sdk (~587MB). The demo never invokes Copilot features; the real SDK is only required lazily by the describer/skill builders, which the demo does not use. Throws clearly if ever touched.",
+  "main": "index.js"
+}
