@@ -1,0 +1,51 @@
+{
+  "ok": true,
+  "sessionId": "20260914-143645-752db1cd",
+  "durationMs": 21786,
+  "platform": "linux",
+  "stats": {
+    "eventCount": 7,
+    "meaningfulEventCount": 5,
+    "stepCount": 2,
+    "frameCount": 3,
+    "unexplainedFrameCount": 0,
+    "silentEventCount": 2
+  },
+  "steps": [
+    {
+      "index": 0,
+      "atMs": 143,
+      "durationMs": 4084,
+      "boundary": "start",
+      "app": "skill-recorder",
+      "titles": [
+        "Skill Recorder"
+      ],
+      "hosts": [],
+      "urls": [],
+      "commands": [],
+      "clipboardCount": 0,
+      "markers": [],
+      "frameCount": 1,
+      "summary": "skill-recorder — Skill Recorder"
+    },
+    {
+      "index": 1,
+      "atMs": 4227,
+      "durationMs": 17559,
+      "boundary": "app-change",
+      "app": "XTerm",
+      "titles": [
+        "terminal - env check",
+        "bug-report.md - draft"
+      ],
+      "hosts": [],
+      "urls": [],
+      "commands": [],
+      "clipboardCount": 1,
+      "markers": [],
+      "frameCount": 2,
+      "summary": "XTerm — terminal - env check"
+    }
+  ]
+}

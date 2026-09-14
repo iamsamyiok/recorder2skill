@@ -1,4 +1,4 @@
-// Recorder Demo plugin for OpenCode — Windows only.
+// recorder2skill plugin for OpenCode (Windows + Linux).
 //
 // Registers custom tools that bridge OpenCode to the vendored
 // microsoft/skill-recorder recorder (MIT, see PATCHES.md). This plugin REPLACES
@@ -21,10 +21,17 @@ import { slugifySkillName } from "../../vendor/skill-recorder/common/skill";
 const pluginDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(pluginDir, "..", "..");
 const cliPath = path.join(projectRoot, "scripts", "recorder-cli.mjs");
-// Must mirror scripts/recorder-cli.mjs: Windows keeps C:\temp, else $HOME dot-dir.
+// Must mirror scripts/recorder-cli.mjs data-root resolution:
+// RECORDER2SKILL_DATA_DIR -> RECORDER_DEMO_DATA_DIR (legacy alias) ->
+// legacy default dir if it already exists (upgrades keep history) -> new default.
 const defaultDataRoot =
-  process.platform === "win32" ? "C:\\temp\\recorder-demo" : path.join(os.homedir(), ".recorder-demo");
-const dataRoot = process.env.RECORDER_DEMO_DATA_DIR || defaultDataRoot;
+  process.platform === "win32"
+    ? { current: "C:\\temp\\recorder2skill", legacy: "C:\\temp\\recorder-demo" }
+    : { current: path.join(os.homedir(), ".recorder2skill"), legacy: path.join(os.homedir(), ".recorder-demo") };
+const dataRoot =
+  process.env.RECORDER2SKILL_DATA_DIR ||
+  process.env.RECORDER_DEMO_DATA_DIR ||
+  (existsSync(defaultDataRoot.legacy) ? defaultDataRoot.legacy : defaultDataRoot.current);
 
 function readJson<T>(file: string): T | null {
   if (!existsSync(file)) return null;

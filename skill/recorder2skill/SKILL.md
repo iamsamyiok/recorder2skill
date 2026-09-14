@@ -11,8 +11,9 @@ allowed-tools:
 
 Record the user's screen while they perform a task once, then generalize that
 single run into a standard Agent Skills file (`SKILL.md`) the agent can reuse.
-All state lives under a local data root (`C:\temp\recorder-demo` on Windows,
-`~/.recorder-demo` elsewhere; override with `RECORDER_DEMO_DATA_DIR`).
+All state lives under a local data root (`C:\temp\recorder2skill` on Windows,
+`~/.recorder2skill` elsewhere; override with `RECORDER2SKILL_DATA_DIR`; the
+old `RECORDER_DEMO_DATA_DIR` and an existing legacy default dir still work).
 
 ## Prerequisites
 

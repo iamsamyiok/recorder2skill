@@ -1,0 +1,17 @@
+{
+  "name": "recorder2skill",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Record how a task is done, turn it into an installable Agent Skill (recorder2skill). Dev tooling: plugin tests, typecheck, CI.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/build.mjs && node --test tests/plugin-tools.test.mjs tests/cli-resolution.test.mjs",
+    "typecheck": "tsc --noEmit -p tests"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.30",
+    "@types/node": "^22.20.2",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  }
+}

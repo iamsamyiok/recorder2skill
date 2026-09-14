@@ -1,5 +1,7 @@
 # recorder2skill (Windows + Linux)
 
+[![CI](https://github.com/iamsamyiok/recorder2skill/actions/workflows/ci.yml/badge.svg)](https://github.com/iamsamyiok/recorder2skill/actions/workflows/ci.yml)
+
 Record a task once on screen, then let your agent turn it into a standard
 `SKILL.md` — a minimal, Windows/Linux derivative of
 [microsoft/skill-recorder](https://github.com/microsoft/skill-recorder) (MIT).
@@ -69,8 +71,10 @@ recorder-demo\
 ```
 
 All recorded data stays local under the demo data root (`sessions\`,
-`skills\`, `logs\`): `C:\temp\recorder-demo` on Windows, `~/.recorder-demo`
-on Linux. Override both with `RECORDER_DEMO_DATA_DIR`.
+`skills\`, `logs\`): `C:\temp\recorder2skill` on Windows, `~/.recorder2skill`
+on Linux. Override with `RECORDER2SKILL_DATA_DIR` (`RECORDER_DEMO_DATA_DIR`
+still works as a legacy alias; an existing legacy default directory is used
+automatically so upgrades keep their history).
 
 ## Setup (PowerShell)
 
@@ -171,8 +175,10 @@ instead of shelling out.
 | `<data-root>\skills\<name>\SKILL.md` | generated skills |
 | `<data-root>\logs\` | launch records (`launch.json`), live-recording marker (`recording.json`), recorder console log (`recorder.log`) |
 
-The root defaults to `C:\temp\recorder-demo` on Windows and `~/.recorder-demo`
-on Linux; override with the `RECORDER_DEMO_DATA_DIR` environment variable.
+The root defaults to `C:\temp\recorder2skill` on Windows and `~/.recorder2skill`
+on Linux; override with the `RECORDER2SKILL_DATA_DIR` environment variable
+(`RECORDER_DEMO_DATA_DIR` is a legacy alias; a pre-existing legacy default
+directory keeps being used automatically).
 
 ## Troubleshooting
 
@@ -195,9 +201,26 @@ on Linux; override with the `RECORDER_DEMO_DATA_DIR` environment variable.
 - No production hardening: the bootstrap trusts env vars, waits are simple
   polls, and failures surface as plain errors.
 - Keep secrets out of recordings; the analysis content stays on your machine
-  except the parts you send to your model provider via OpenCode.
-- The vendored Copilot modules are dead code in this demo (never invoked);
-  they remain only to keep the vendor diff minimal.
+  except the parts you send to your model provider.
+- Heavy vendor features the demo never invokes (Copilot runtime, local LLM
+  narration, OCR) are replaced by tiny local stubs under
+  `vendor/skill-recorder/demo-stubs/` wired via `file:` dependencies; touching
+  one fails loudly at startup instead of silently misbehaving.
+
+## Development
+
+Dev tooling lives at the repo root (Node >= 24.19):
+
+```bash
+npm install
+npm test          # esbuild-bundles the OpenCode plugin, then runs the test suite
+npm run typecheck # strict tsc over .opencode/plugins/recorder-demo.ts
+```
+
+`tests/` covers the plugin tool semantics (newest-session resolution, event
+filters and truncation, frame manifests, SKILL.md rendering) plus the CLI's
+data-root resolution, exit codes, and `doctor` self-check. CI runs the suite
+and a full vendor build on every push.
 
 ## License
 

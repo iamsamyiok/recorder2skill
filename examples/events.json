@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "sessionId": "20260914-143645-752db1cd",
+  "count": 5,
+  "total": 7,
+  "truncated": false,
+  "events": [
+    {
+      "seq": 1,
+      "t": 142.60755399999994,
+      "epoch": 1789396605178,
+      "type": "app.activate",
+      "source": "active-window",
+      "atMs": 143,
+      "app": "skill-recorder",
+      "title": "Skill Recorder",
+      "bounds": {
+        "x": 600,
+        "y": 250,
+        "width": 400,
+        "height": 500
+      },
+      "pid": 9932,
+      "path": "/workspace/recorder-demo/vendor/skill-recorder/node_modules/electron/dist/electron"
+    },
+    {
+      "seq": 2,
+      "t": 4226.039011999999,
+      "epoch": 1789396609262,
+      "type": "app.activate",
+      "source": "active-window",
+      "atMs": 4227,
+      "app": "XTerm",
+      "title": "terminal - env check",
+      "bounds": {
+        "x": 101,
+        "y": 120,
+        "width": 604,
+        "height": 394
+      },
+      "pid": 10077,
+      "path": "/usr/bin/xterm"
+    },
+    {
+      "seq": 3,
+      "t": 11248.332,
+      "epoch": 1789396616284,
+      "type": "clipboard.change",
+      "source": "clipboard",
+      "atMs": 11249,
+      "formats": [
+        "text/plain"
+      ],
+      "length": 8,
+      "hash": "6c8262b5f9bcc77b",
+      "textPreview": "24.19.0"
+    },
+    {
+      "seq": 4,
+      "t": 14449.527846,
+      "epoch": 1789396619485,
+      "type": "app.title-change",
+      "source": "active-window",
+      "atMs": 14450,
+      "app": "XTerm",
+      "title": "bug-report.md - draft"
+    },
+    {
+      "seq": 5,
+      "t": 20588.297743,
+      "epoch": 1789396625624,
+      "type": "app.title-change",
+      "source": "active-window",
+      "atMs": 20589,
+      "app": "XTerm",
+      "title": "terminal - env check"
+    }
+  ]
+}

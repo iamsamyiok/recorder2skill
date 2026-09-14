@@ -1,4 +1,4 @@
-# Recorder Demo — Agent Brief
+# recorder2skill — Agent Brief (OpenCode plugin path)
 
 Adapted from microsoft/skill-recorder's Describer and Skill Builder briefs
 (MIT, see PATCHES.md). This is the working procedure for turning a screen

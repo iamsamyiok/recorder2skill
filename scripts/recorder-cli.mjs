@@ -15,16 +15,24 @@
 //   frames [sessionId]        kept screen frames (JPEG paths + phash + reason)
 //   save-skill <name>         write SKILL.md from --description + --body-file (+ --tools)
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const vendorRoot = path.join(projectRoot, "vendor", "skill-recorder");
-// Windows keeps its C:\temp default; other platforms use a dot-dir in $HOME.
-const defaultDataRoot = process.platform === "win32" ? "C:\\temp\\recorder-demo" : path.join(os.homedir(), ".recorder-demo");
-const dataRoot = process.env.RECORDER_DEMO_DATA_DIR || defaultDataRoot;
+// Data-root resolution order: RECORDER2SKILL_DATA_DIR -> RECORDER_DEMO_DATA_DIR
+// (legacy alias) -> legacy default dir if it already exists (so upgrades keep
+// their history) -> the recorder2skill default.
+const defaultDataRoot =
+  process.platform === "win32"
+    ? { current: "C:\\temp\\recorder2skill", legacy: "C:\\temp\\recorder-demo" }
+    : { current: path.join(os.homedir(), ".recorder2skill"), legacy: path.join(os.homedir(), ".recorder-demo") };
+const dataRoot =
+  process.env.RECORDER2SKILL_DATA_DIR ||
+  process.env.RECORDER_DEMO_DATA_DIR ||
+  (existsSync(defaultDataRoot.legacy) ? defaultDataRoot.legacy : defaultDataRoot.current);
 const sessionsDir = path.join(dataRoot, "sessions");
 const logsDir = path.join(dataRoot, "logs");
 const LAUNCH_FILE = path.join(logsDir, "launch.json");
@@ -34,11 +42,11 @@ const SUPPORTED = new Set(["win32", "linux"]);
 const electronBinary = process.platform === "win32" ? "electron.exe" : "electron";
 
 function log(msg) {
-  process.stderr.write(`[recorder-cli] ${msg}\n`);
+  process.stderr.write(`[recorder2skill] ${msg}\n`);
 }
 
 function die(msg, code = 1) {
-  process.stderr.write(`[recorder-cli] ERROR: ${msg}\n`);
+  process.stderr.write(`[recorder2skill] ERROR: ${msg}\n`);
   process.stdout.write(JSON.stringify({ ok: false, error: msg }) + "\n");
   process.exit(code);
 }
@@ -513,13 +521,70 @@ function parseOpts(argv) {
   return { opts, positional };
 }
 
+function cmdDoctor() {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok, detail });
+
+  const nodeMajor = Number(process.versions.node.split(".")[0]);
+  add("node", nodeMajor >= 24, `node ${process.versions.node} (vendor engines require >=24.19 <25)`);
+
+  const platOk = process.platform === "win32" || process.platform === "linux" || process.platform === "darwin";
+  add("platform", platOk, process.platform);
+
+  const electronBin = path.join(vendorRoot, "node_modules", "electron", "dist", process.platform === "win32" ? "electron.exe" : "electron");
+  add("electron", existsSync(electronBin), existsSync(electronBin) ? electronBin : `missing: ${electronBin} (run setup.sh / setup.ps1)`);
+
+  const mainJs = path.join(vendorRoot, "dist-electron", "main.js");
+  add("vendor-build", existsSync(mainJs), existsSync(mainJs) ? mainJs : `missing: ${mainJs} (run: cd vendor/skill-recorder && npm run build)`);
+
+  let dataOk = true;
+  let dataDetail = dataRoot;
+  try {
+    mkdirSync(dataRoot, { recursive: true });
+    writeFileSync(path.join(dataRoot, ".doctor-probe"), "ok");
+    unlinkSync(path.join(dataRoot, ".doctor-probe"));
+  } catch (e) {
+    dataOk = false;
+    dataDetail = `${dataRoot} (${e.message})`;
+  }
+  add("data-root", dataOk, dataDetail);
+
+  if (process.platform === "linux") {
+    add("display", Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY), process.env.DISPLAY ? `DISPLAY=${process.env.DISPLAY}` : "no DISPLAY/WAYLAND_DISPLAY (headless: start Xvfb first)");
+  }
+
+  const sessions = listSessionDirs();
+  add("sessions", true, sessions.length === 0 ? "no sessions yet" : `${sessions.length} session(s), newest: ${path.basename(sessions[0])}`);
+
+  const failed = checks.filter((c) => !c.ok);
+  process.stdout.write(JSON.stringify({ ok: failed.length === 0, dataRoot, checks }, null, 2) + "\n");
+  process.exit(failed.length === 0 ? 0 : 1);
+}
+
+function cmdSkills() {
+  const dir = path.join(dataRoot, "skills");
+  const skills = existsSync(dir)
+    ? readdirSync(dir)
+        .filter((n) => !n.startsWith(".") && existsSync(path.join(dir, n, "SKILL.md")))
+        .sort()
+    : [];
+  process.stdout.write(JSON.stringify({ ok: true, skillsDir: dir, skills }, null, 2) + "\n");
+}
+
 const [cmd, ...args] = process.argv.slice(2);
+const usage =
+  "Usage: recorder-cli.mjs start | wait-ready [timeoutSec] | last | summary <sessionId> |\n" +
+  "                  sessions | timeline [sessionId] | events [sessionId] [--types a,b] [--all] [--from ms] [--to ms] [--limit n] |\n" +
+  "                  frames [sessionId] | skills | doctor |\n" +
+  "                  save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"]\n";
 if (cmd === "start") cmdStart();
 else if (cmd === "wait-ready") cmdWaitReady(Number(args[0]) || 600, Number(args[1]) || 2);
 else if (cmd === "last") cmdLast();
 else if (cmd === "summary" && args[0]) cmdSummary(args[0]);
 else if (cmd === "sessions") cmdSessions();
 else if (cmd === "timeline") cmdTimeline(args[0]);
+else if (cmd === "doctor") cmdDoctor();
+else if (cmd === "skills") cmdSkills();
 else if (cmd === "events") {
   const { opts, positional } = parseOpts(args);
   cmdEvents(positional[0], {
@@ -533,11 +598,9 @@ else if (cmd === "events") {
 else if (cmd === "save-skill") {
   const { opts, positional } = parseOpts(args);
   cmdSaveSkill(positional[0], opts);
+} else if (cmd === "help" || cmd === "--help" || cmd === "-h") {
+  process.stdout.write(usage);
 } else {
-  process.stderr.write(
-    "Usage: recorder-cli.mjs start | wait-ready [timeoutSec] | last | summary <sessionId> |\n" +
-      "                  sessions | timeline [sessionId] | events [sessionId] [--types a,b] [--all] [--from ms] [--to ms] [--limit n] |\n" +
-      "                  frames [sessionId] | save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"]\n",
-  );
+  process.stderr.write(usage);
   process.exit(2);
 }
