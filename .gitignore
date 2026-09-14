@@ -5,3 +5,5 @@ release/
 .env
 *.log
 config/env
+tests/build/
+node_modules/
