@@ -33,12 +33,19 @@ exiting 0 (or a clear "No sessions" error) means the CLI works.
    is post-processed (frame extraction, dHash dedupe, timeline bundle) and
    returns a summary JSON. If it times out, the recording is still running —
    ask the user to stop it, then re-run.
-4. **Analyze** (see method below) — `timeline`, then `events`, then — only
-   where events are ambiguous — `frames` + viewing the JPEG paths.
+4. **Analyze** (see method below) — `timeline` (includes the auto-generated
+   `description` — start from it), then `events` (text fields are
+   PII-redacted), then — only where events are ambiguous — `frames` +
+   viewing the JPEG paths.
 5. **Write the skill** — compose the SKILL.md body, save it to a temp file,
    then `node scripts/recorder-cli.mjs save-skill <name> --description "..."
-   --body-file <file> [--tools "pattern1,pattern2"]`. Report the returned
-   path to the user.
+   --body-file <file> [--tools "pattern1,pattern2"]`. The description is
+   stored single-line (the Codex CLI / Claude Code parser convention).
+   Report the returned path to the user.
+6. **Clean up (optional)** — once the user confirms the skill, move the
+   session out of the active set with
+   `node scripts/recorder-cli.mjs archive <sessionId>` (nothing is deleted;
+   `sessions --all` still lists it).
 
 ## Analyzing a session
 

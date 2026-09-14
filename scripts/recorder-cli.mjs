@@ -15,7 +15,7 @@
 //   frames [sessionId]        kept screen frames (JPEG paths + phash + reason)
 //   save-skill <name>         write SKILL.md from --description + --body-file (+ --tools)
 import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +37,9 @@ const dataRoot =
   process.env.RECORDER_DEMO_DATA_DIR ||
   (existsSync(defaultDataRoot.legacy) ? defaultDataRoot.legacy : defaultDataRoot.current);
 const sessionsDir = path.join(dataRoot, "sessions");
+// Archived sessions keep all data but leave the active set (Codex-style
+// archived_sessions); addressable by explicit id, excluded from defaults.
+const archivedSessionsDir = path.join(dataRoot, "archived-sessions");
 const logsDir = path.join(dataRoot, "logs");
 const LAUNCH_FILE = path.join(logsDir, "launch.json");
 
@@ -327,10 +330,12 @@ function cmdLast() {
 }
 
 function cmdSummary(sessionId) {
-  const dir = path.join(sessionsDir, sessionId);
-  if (!isValidSessionId(sessionId) || !existsSync(path.join(dir, "session.json"))) {
-    die(`Unknown session: ${sessionId}`);
-  }
+  if (!isValidSessionId(sessionId)) die(`Unknown session: ${sessionId}`);
+  // Active first, then archived sessions remain addressable by explicit id.
+  const dir = [sessionsDir, archivedSessionsDir]
+    .map((root) => path.join(root, sessionId))
+    .find((d) => existsSync(path.join(d, "session.json")));
+  if (!dir) die(`Unknown session: ${sessionId}`);
   const summary = readSessionSummary(dir);
   process.stdout.write(JSON.stringify({ ok: true, sessionId, ...summary }, null, 2) + "\n");
 }
@@ -356,10 +361,13 @@ const MEANINGFUL_EVENT_TYPES = new Set([
 
 function resolveTargetSession(idOrUndefined) {
   if (idOrUndefined !== undefined) {
-    if (!isValidSessionId(idOrUndefined) || !existsSync(path.join(sessionsDir, idOrUndefined, "session.json"))) {
-      die(`Unknown session: ${idOrUndefined}`);
+    if (!isValidSessionId(idOrUndefined)) die(`Unknown session: ${idOrUndefined}`);
+    // Active first, then archived sessions remain addressable by explicit id.
+    for (const root of [sessionsDir, archivedSessionsDir]) {
+      const dir = path.join(root, idOrUndefined);
+      if (existsSync(path.join(dir, "session.json"))) return { id: idOrUndefined, dir };
     }
-    return { id: idOrUndefined, dir: path.join(sessionsDir, idOrUndefined) };
+    die(`Unknown session: ${idOrUndefined}`);
   }
   const dirs = listSessionDirs();
   if (!dirs.length) die(`No sessions under ${sessionsDir}`);
@@ -376,9 +384,16 @@ function readJsonIn(dir, file) {
   }
 }
 
-function cmdSessions() {
+function cmdSessions(opts = {}) {
+  const includeArchived = opts.all === true;
   const dirs = listSessionDirs();
-  const sessions = dirs.map((dir) => {
+  const archivedDirs = includeArchived && existsSync(archivedSessionsDir)
+    ? readdirSync(archivedSessionsDir)
+        .filter((name) => !name.startsWith("."))
+        .map((name) => path.join(archivedSessionsDir, name))
+        .filter((p) => statSync(p).isDirectory() && existsSync(path.join(p, "session.json")))
+    : [];
+  const sessions = [...dirs, ...archivedDirs].map((dir) => {
     const id = path.basename(dir);
     const meta = readJsonIn(dir, "session.json") ?? {};
     const bundle = readJsonIn(dir, "bundle.json");
@@ -388,13 +403,29 @@ function cmdSessions() {
       startedAt: meta.startedAt ?? 0,
       stoppedAt: meta.stoppedAt ?? null,
       ready: existsSync(path.join(dir, "READY.json")),
+      archived: dir.startsWith(archivedSessionsDir),
       eventCount: bundle?.stats?.eventCount ?? 0,
       stepCount: bundle?.stats?.stepCount ?? 0,
       frameCount: Array.isArray(manifest) ? manifest.length : (manifest?.frames?.length ?? 0),
       dir,
     };
   });
+  sessions.sort((a, b) => b.startedAt - a.startedAt);
   process.stdout.write(JSON.stringify({ ok: true, count: sessions.length, sessions }, null, 2) + "\n");
+}
+
+/** Move a session out of the active set without deleting anything. */
+function cmdArchive(idOrUndefined) {
+  const { id, dir } = resolveTargetSession(idOrUndefined === "latest" ? undefined : idOrUndefined);
+  if (dir.startsWith(archivedSessionsDir)) {
+    process.stdout.write(JSON.stringify({ ok: true, sessionId: id, dir, alreadyArchived: true }, null, 2) + "\n");
+    return;
+  }
+  mkdirSync(archivedSessionsDir, { recursive: true });
+  const target = path.join(archivedSessionsDir, id);
+  if (existsSync(target)) die(`Archived session already exists: ${target}`);
+  renameSync(dir, target);
+  process.stdout.write(JSON.stringify({ ok: true, sessionId: id, dir: target, alreadyArchived: false }, null, 2) + "\n");
 }
 
 function cmdTimeline(sessionIdOrUndefined) {
@@ -535,7 +566,11 @@ function cmdSaveSkill(name, opts) {
   const skillsDir = path.join(dataRoot, "skills");
   const outDir = path.join(skillsDir, slug);
   mkdirSync(outDir, { recursive: true });
-  const lines = ["---", `name: ${slug}`, `description: ${JSON.stringify(String(opts.description).trim())}`];
+  // Codex and Claude parsers expect a single-line description; collapse all
+  // whitespace. Warn (keep full) when it exceeds the 1024-char convention.
+  const description = String(opts.description).replace(/\s+/g, " ").trim();
+  if (description.length > 1024) log.warn("description exceeds 1024 chars; consider shortening it for skill-marketplace compatibility.");
+  const lines = ["---", `name: ${slug}`, `description: ${JSON.stringify(description)}`];
   const tools = String(opts.tools ?? "")
     .split(",")
     .map((t) => t.trim())
@@ -604,7 +639,16 @@ function cmdDoctor() {
   }
 
   const sessions = listSessionDirs();
-  add("sessions", true, sessions.length === 0 ? "no sessions yet" : `${sessions.length} session(s), newest: ${path.basename(sessions[0])}`);
+  const archivedCount = existsSync(archivedSessionsDir)
+    ? readdirSync(archivedSessionsDir).filter((n) => !n.startsWith(".") && existsSync(path.join(archivedSessionsDir, n, "session.json"))).length
+    : 0;
+  add(
+    "sessions",
+    true,
+    sessions.length === 0
+      ? "no sessions yet" + (archivedCount ? ` (${archivedCount} archived)` : "")
+      : `${sessions.length} active session(s)` + (archivedCount ? `, ${archivedCount} archived` : "") + `, newest: ${path.basename(sessions[0])}`,
+  );
 
   const failed = checks.filter((c) => !c.ok);
   process.stdout.write(JSON.stringify({ ok: failed.length === 0, dataRoot, checks }, null, 2) + "\n");
@@ -624,14 +668,19 @@ function cmdSkills() {
 const [cmd, ...args] = process.argv.slice(2);
 const usage =
   "Usage: recorder-cli.mjs start | wait-ready [timeoutSec] | last | summary <sessionId> |\n" +
-  "                  sessions | timeline [sessionId] | events [sessionId] [--types a,b] [--all] [--from ms] [--to ms] [--limit n] |\n" +
-  "                  frames [sessionId] | skills | doctor |\n" +
+  "                  sessions [--all] | timeline [sessionId] | events [sessionId] [--types a,b] [--all] [--from ms] [--to ms] [--limit n] |\n" +
+  "                  frames [sessionId] | skills | doctor | archive [sessionId|latest] |\n" +
   "                  save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"]\n";
 if (cmd === "start") cmdStart();
 else if (cmd === "wait-ready") cmdWaitReady(Number(args[0]) || 600, Number(args[1]) || 2);
 else if (cmd === "last") cmdLast();
 else if (cmd === "summary" && args[0]) cmdSummary(args[0]);
-else if (cmd === "sessions") cmdSessions();
+else if (cmd === "sessions") {
+  const { opts } = parseOpts(args);
+  cmdSessions({ all: opts.all === true });
+}
+else if (cmd === "archive" && args[0]) cmdArchive(args[0]);
+else if (cmd === "archive") cmdArchive(undefined);
 else if (cmd === "timeline") cmdTimeline(args[0]);
 else if (cmd === "doctor") cmdDoctor();
 else if (cmd === "skills") cmdSkills();

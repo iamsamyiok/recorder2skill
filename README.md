@@ -133,14 +133,19 @@ command prints JSON):
 
 ```bash
 node scripts/recorder-cli.mjs start            # launch; returns once recording is live
-# ... user does the task, clicks Stop (or Ctrl+Shift+R) ...
+# ... user does the task, clicks Stop (or Ctrl+Shift+R); Ctrl+Shift+M drops a marker ...
 node scripts/recorder-cli.mjs wait-ready 600   # blocks until the session is processed
-node scripts/recorder-cli.mjs timeline         # ordered steps (atMs, apps, clipboard, frames)
-node scripts/recorder-cli.mjs events           # captured events (--types / --from / --to / --limit)
+node scripts/recorder-cli.mjs timeline         # ordered steps + auto-generated description
+node scripts/recorder-cli.mjs events           # captured events, PII-redacted (--types/--from/--to/--limit)
 node scripts/recorder-cli.mjs frames           # kept frames (JPEG paths + phash + reason)
 node scripts/recorder-cli.mjs save-skill <name> --description "..." \
   --body-file body.md --tools "Bash(git *),webfetch"   # writes SKILL.md
+node scripts/recorder-cli.mjs archive latest   # move a session to archived-sessions/ (nothing deleted)
+node scripts/recorder-cli.mjs sessions --all   # archived sessions stay listed with archived: true
 ```
+
+The `description` is written single-line (the format Codex CLI and Claude
+Code parsers expect); sessions live until you explicitly `archive` them.
 
 Success = the SKILL.md exists on disk and is a valid Agent Skills file
 (YAML frontmatter `name`/`description`/`allowed-tools` + imperative body).
@@ -178,7 +183,8 @@ instead of shelling out.
 
 | Path | Contents |
 | --- | --- |
-| `<data-root>\sessions\<id>\` | `session.json`, `events.jsonl`, `video.webm`, `frames\` (JPEG + `frames.json` manifest), `bundle.json`, `correlation.json` |
+| `<data-root>\sessions\<id>\` | `session.json`, `events.jsonl`, `video.webm`, `frames\` (JPEG + `frames.json` manifest), `bundle.json`, `correlation.json`, `description.md` |
+| `<data-root>\archived-sessions\<id>\` | same layout; moved there by `archive` (never deleted) |
 | `<data-root>\skills\<name>\SKILL.md` | generated skills |
 | `<data-root>\logs\` | launch records (`launch.json`), live-recording marker (`recording.json`), recorder console log (`recorder.log`) |
 

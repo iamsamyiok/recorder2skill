@@ -318,7 +318,12 @@ export const RecorderDemoPlugin: Plugin = async () => {
           const skillsDir = path.join(dataRoot, "skills");
           const outDir = path.join(skillsDir, slug);
           mkdirSync(outDir, { recursive: true });
-          const lines: string[] = ["---", `name: ${slug}`, `description: ${JSON.stringify(description.trim())}`];
+          // Codex and Claude parsers expect a single-line description.
+          const oneLine = description.replace(/\s+/g, " ").trim();
+          if (oneLine.length > 1024) {
+            console.warn("[recorder2skill] description exceeds 1024 chars; consider shortening it.");
+          }
+          const lines: string[] = ["---", `name: ${slug}`, `description: ${JSON.stringify(oneLine)}`];
           const tools = (allowedTools ?? []).map((t) => t.trim()).filter(Boolean);
           if (tools.length) {
             lines.push("allowed-tools:");

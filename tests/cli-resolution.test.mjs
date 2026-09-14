@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -149,4 +149,49 @@ test("summary surfaces description.md when present", () => {
   assert.equal(r.code, 0);
   assert.match(r.stdout, /did the user verified things|verified things/);
   assert.match(r.stdout, /descriptionPath/);
+});
+
+test("archive moves a session out of the active set (nothing deleted)", () => {
+  const dir = path.join(os.tmpdir(), `r2s-archive-${process.pid}`);
+  const sid = "20260914-170000-arch0001";
+  const sessionDir = path.join(dir, "sessions", sid);
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(path.join(sessionDir, "session.json"), JSON.stringify({ id: sid, startedAt: 5000 }));
+  writeFileSync(path.join(sessionDir, "READY.json"), "{}");
+
+  const r1 = runCli(["archive", "latest"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r1.code, 0);
+  assert.ok(existsSync(path.join(dir, "archived-sessions", sid, "session.json")), "data must move, not vanish");
+  assert.ok(!existsSync(path.join(dir, "sessions", sid)), "active dir must be gone after move");
+
+  const list = runCli(["sessions"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(list.json.count, 0, "default listing excludes archived");
+
+  const listAll = runCli(["sessions", "--all"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(listAll.json.count, 1);
+  assert.equal(listAll.json.sessions[0].archived, true);
+
+  // Archived sessions remain addressable by explicit id.
+  const sum = runCli(["summary", sid], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(sum.code, 0);
+  assert.match(sum.stdout, new RegExp(sid));
+
+  // Archiving again is a friendly no-op.
+  const r2 = runCli(["archive", sid], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r2.code, 0);
+  assert.equal(r2.json.alreadyArchived, true);
+});
+
+test("save-skill collapses multi-line descriptions to one line", () => {
+  const dir = path.join(os.tmpdir(), `r2s-skill-oneline-${process.pid}`);
+  mkdirSync(path.join(dir, "skills"), { recursive: true });
+  const body = path.join(dir, "body.md");
+  writeFileSync(body, "Do the thing.");
+  const r = runCli(
+    ["save-skill", "My Skill", "--description", "Does X\nwhen Y is true.\n  Tabs\ttoo", "--body-file", body],
+    { RECORDER2SKILL_DATA_DIR: dir },
+  );
+  assert.equal(r.code, 0);
+  const md = readFileSync(path.join(dir, "skills", "my-skill", "SKILL.md"), "utf8");
+  assert.match(md, /^description: "Does X when Y is true\. Tabs too"$/m, "description must be single-line");
 });
