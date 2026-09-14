@@ -7,7 +7,7 @@
 // done by the OpenCode agent itself, using these tools to read the captured
 // timeline / events / frames.
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,9 +69,21 @@ function sessionStartMeta(dir: string): { order: number; mtimeMs: number } {
 function listSessionDirs(): string[] {
   const sessionsDir = path.join(dataRoot, "sessions");
   if (!existsSync(sessionsDir)) return [];
+  // Skip "unsaved or partial" session dirs (Codex's session_index keeps
+  // walking past them) instead of letting one torn entry break every tool.
   return readdirSync(sessionsDir)
     .map((name) => path.join(sessionsDir, name))
-    .filter((p) => statSync(p).isDirectory() && existsSync(path.join(p, "session.json")))
+    .filter((p) => {
+      try {
+        if (!statSync(p).isDirectory()) return false;
+        const metaPath = path.join(p, "session.json");
+        if (!existsSync(metaPath)) return false;
+        JSON.parse(readFileSync(metaPath, "utf8"));
+        return true;
+      } catch {
+        return false;
+      }
+    })
     .sort((a, b) => {
       const ma = sessionStartMeta(a);
       const mb = sessionStartMeta(b);
@@ -331,7 +343,9 @@ export const RecorderDemoPlugin: Plugin = async () => {
           }
           lines.push("---", "", body.trim(), "");
           const outPath = path.join(outDir, "SKILL.md");
-          writeFileSync(outPath, lines.join("\n"));
+          const tmpPath = `${outPath}.tmp-${process.pid}`;
+          writeFileSync(tmpPath, lines.join("\n"));
+          renameSync(tmpPath, outPath);
           return JSON.stringify({ ok: true, skill: slug, path: outPath }, null, 2);
         },
       }),

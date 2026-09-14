@@ -95,7 +95,7 @@ async function cmdStart() {
   }
 
   const startedAt = Date.now();
-  writeFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: null }, null, 2));
+  atomicWriteFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: null }, null, 2));
 
   // Electron refuses to run as root without --no-sandbox (typical in
   // containers/CI on Linux); regular desktop users are unaffected.
@@ -122,7 +122,7 @@ async function cmdStart() {
   closeSync(out);
   // Written immediately (overwriting any stale record) so wait-ready can tell
   // "this launch never confirmed live" from "waiting on the launched session".
-  writeFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: child.pid, dataRoot, sessionId: null, log: recorderLog }, null, 2));
+  atomicWriteFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: child.pid, dataRoot, sessionId: null, log: recorderLog }, null, 2));
   child.unref();
 
   // The app writes logs/recording.json only once recording is REALLY live
@@ -157,7 +157,7 @@ async function cmdStart() {
   log(`recorder console log: ${recorderLog}`);
   // Anchor the launch record on the confirmed session so wait-ready waits for
   // THIS recording, never a stale one.
-  writeFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: child.pid, dataRoot, sessionId: recording.sessionId, log: recorderLog }, null, 2));
+  atomicWriteFileSync(LAUNCH_FILE, JSON.stringify({ startedAt, pid: child.pid, dataRoot, sessionId: recording.sessionId, log: recorderLog }, null, 2));
   process.stdout.write(
     JSON.stringify({
       ok: true,
@@ -231,17 +231,53 @@ function sessionOrder(dir) {
   return { order, mtimeMs: statSync(path.join(dir, "session.json")).mtimeMs };
 }
 
-function listSessionDirs() {
-  if (!existsSync(sessionsDir)) return [];
-  return readdirSync(sessionsDir)
+function listSessionDirsDetailed() {
+  // Codex rollout's session_index keeps walking past "unsaved or partial"
+  // session dirs instead of failing the whole listing: an entry without a
+  // readable session.json is skipped (and counted) here.
+  if (!existsSync(sessionsDir)) return { dirs: [], partial: 0 };
+  let partial = 0;
+  const dirs = readdirSync(sessionsDir)
     .filter((name) => !name.startsWith("."))
     .map((name) => path.join(sessionsDir, name))
-    .filter((p) => statSync(p).isDirectory() && existsSync(path.join(p, "session.json")))
+    .filter((p) => {
+      let st;
+      try {
+        st = statSync(p);
+      } catch {
+        return false; // vanished mid-listing; keep walking
+      }
+      if (!st.isDirectory()) return false;
+      const metaPath = path.join(p, "session.json");
+      if (!existsSync(metaPath)) {
+        partial += 1;
+        return false;
+      }
+      try {
+        JSON.parse(readFileSync(metaPath, "utf8"));
+        return true;
+      } catch {
+        partial += 1; // torn session.json (e.g. crash mid-write)
+        return false;
+      }
+    })
     .sort((a, b) => {
       const ma = sessionOrder(a);
       const mb = sessionOrder(b);
       return mb.order - ma.order || mb.mtimeMs - ma.mtimeMs;
     });
+  return { dirs, partial };
+}
+
+function listSessionDirs() {
+  return listSessionDirsDetailed().dirs;
+}
+
+/** Write via tmp + rename so a crash never leaves a torn state file behind. */
+function atomicWriteFileSync(file, data) {
+  const tmp = `${file}.tmp-${process.pid}`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, file);
 }
 
 function newestReadySince(sinceMs) {
@@ -386,13 +422,27 @@ function readJsonIn(dir, file) {
 
 function cmdSessions(opts = {}) {
   const includeArchived = opts.all === true;
-  const dirs = listSessionDirs();
-  const archivedDirs = includeArchived && existsSync(archivedSessionsDir)
-    ? readdirSync(archivedSessionsDir)
-        .filter((name) => !name.startsWith("."))
-        .map((name) => path.join(archivedSessionsDir, name))
-        .filter((p) => statSync(p).isDirectory() && existsSync(path.join(p, "session.json")))
-    : [];
+  const { dirs, partial: activePartial } = listSessionDirsDetailed();
+  let archivedPartial = 0;
+  const archivedDirs = [];
+  if (includeArchived && existsSync(archivedSessionsDir)) {
+    for (const name of readdirSync(archivedSessionsDir)) {
+      if (name.startsWith(".")) continue;
+      const p = path.join(archivedSessionsDir, name);
+      const metaPath = path.join(p, "session.json");
+      try {
+        if (!statSync(p).isDirectory()) continue;
+        if (!existsSync(metaPath)) {
+          archivedPartial += 1;
+          continue;
+        }
+        JSON.parse(readFileSync(metaPath, "utf8"));
+        archivedDirs.push(p);
+      } catch {
+        archivedPartial += 1;
+      }
+    }
+  }
   const sessions = [...dirs, ...archivedDirs].map((dir) => {
     const id = path.basename(dir);
     const meta = readJsonIn(dir, "session.json") ?? {};
@@ -411,7 +461,10 @@ function cmdSessions(opts = {}) {
     };
   });
   sessions.sort((a, b) => b.startedAt - a.startedAt);
-  process.stdout.write(JSON.stringify({ ok: true, count: sessions.length, sessions }, null, 2) + "\n");
+  const partial = activePartial + archivedPartial;
+  process.stdout.write(
+    JSON.stringify({ ok: true, count: sessions.length, ...(partial ? { partial } : {}), sessions }, null, 2) + "\n",
+  );
 }
 
 /** Move a session out of the active set without deleting anything. */
@@ -474,18 +527,21 @@ function cmdEvents(sessionIdOrUndefined, opts) {
   const startedAt = meta?.startedAt ?? 0;
   const requested = (opts.types ?? "").split(",").map((t) => t.trim()).filter(Boolean);
   const meaningfulOnly = requested.length === 0 && !opts.all;
+  let skippedLines = 0;
   let events = readFileSync(eventsPath, "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => {
+    .flatMap((line) => {
+      // Torn tail / corrupt line: skip and count, mirroring Codex rollout
+      // readers which continue past unparseable lines instead of failing.
       try {
-        return JSON.parse(line);
+        const { payload, ...rest } = JSON.parse(line);
+        return [{ ...rest, atMs: rest.epoch - startedAt, ...(payload ?? {}) }];
       } catch {
-        return null;
+        skippedLines += 1;
+        return [];
       }
-    })
-    .filter(Boolean)
-    .map(({ payload, ...rest }) => ({ ...rest, atMs: rest.epoch - startedAt, ...(payload ?? {}) }));
+    });
   const total = events.length;
   if (meaningfulOnly) events = events.filter((e) => MEANINGFUL_EVENT_TYPES.has(e.type));
   else if (requested.length) events = events.filter((e) => requested.includes(e.type));
@@ -510,7 +566,16 @@ function cmdEvents(sessionIdOrUndefined, opts) {
   }
   process.stdout.write(
     JSON.stringify(
-      { ok: true, sessionId: id, count: events.length, total, truncated, redactedFields: redactedCount, events },
+      {
+        ok: true,
+        sessionId: id,
+        count: events.length,
+        total,
+        truncated,
+        ...(skippedLines ? { skippedLines } : {}),
+        redactedFields: redactedCount,
+        events,
+      },
       null,
       2,
     ) + "\n",
@@ -581,7 +646,7 @@ function cmdSaveSkill(name, opts) {
   }
   lines.push("---", "", readFileSync(bodyFile, "utf8").trim(), "");
   const outPath = path.join(outDir, "SKILL.md");
-  writeFileSync(outPath, lines.join("\n"));
+  atomicWriteFileSync(outPath, lines.join("\n"));
   process.stdout.write(JSON.stringify({ ok: true, skill: slug, path: outPath }, null, 2) + "\n");
 }
 
@@ -638,16 +703,17 @@ function cmdDoctor() {
     add("display", Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY), process.env.DISPLAY ? `DISPLAY=${process.env.DISPLAY}` : "no DISPLAY/WAYLAND_DISPLAY (headless: start Xvfb first)");
   }
 
-  const sessions = listSessionDirs();
+  const { dirs: sessions, partial: partialSessions } = listSessionDirsDetailed();
   const archivedCount = existsSync(archivedSessionsDir)
     ? readdirSync(archivedSessionsDir).filter((n) => !n.startsWith(".") && existsSync(path.join(archivedSessionsDir, n, "session.json"))).length
     : 0;
   add(
     "sessions",
     true,
-    sessions.length === 0
-      ? "no sessions yet" + (archivedCount ? ` (${archivedCount} archived)` : "")
-      : `${sessions.length} active session(s)` + (archivedCount ? `, ${archivedCount} archived` : "") + `, newest: ${path.basename(sessions[0])}`,
+    (sessions.length === 0 ? "no sessions yet" : `${sessions.length} active session(s)`)
+      + (partialSessions ? `, ${partialSessions} partial (skipped)` : "")
+      + (archivedCount ? `, ${archivedCount} archived` : "")
+      + (sessions.length ? `, newest: ${path.basename(sessions[0])}` : ""),
   );
 
   const failed = checks.filter((c) => !c.ok);

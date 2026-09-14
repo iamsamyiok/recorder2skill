@@ -105,3 +105,28 @@ untouched):
 - On Linux the vendor's browser-URL collector degrades honestly (no URL
   provider is implemented there upstream): timelines carry app switches,
   window titles and clipboard events instead.
+
+## 6. Crash-tolerance patterns absorbed from openai/codex (demo layer, no vendor change)
+
+Source study: `codex-rs/rollout/src/recorder.rs` (buffered writer with
+`write_pending_with_recovery` / `enter_recovery_mode`), `session_index.rs`
+("keep walking" past unsaved or partial session dirs), and `list.rs`
+(`read_session_meta_line` continues past unparseable lines).
+
+Adopted in `scripts/recorder-cli.mjs` and `.opencode/plugins/recorder-demo.ts`:
+
+- Read-side tolerance: `sessions` / `timeline` / `doctor` skip session dirs
+  whose `session.json` is missing or torn (JSON.parse failure) and count them
+  as `partial` instead of failing the whole listing; the plugin's session
+  listing does the same silently. `events` continues past unparseable
+  `events.jsonl` lines and reports them as `skippedLines` (present in the
+  output only when > 0, so healthy sessions keep their old shape).
+- Write-side atomicity: state files written by the demo layer (`launch.json`
+  ×3, generated `SKILL.md` in CLI and plugin) now go through tmp + `rename`
+  (`atomicWriteFileSync`), so a crash can never leave a torn file behind —
+  this closes the loop with the read-side tolerance above.
+- Evaluated, not adopted: writer reopen-and-retry (`recorder.rs`) — our state
+  files are small single-shot writes where tmp+rename already covers the torn
+  case; vendor `READY.json`/`recording.json` atomic writes — the CLI treats
+  READY.json as existence-only and a torn `recording.json` is recovered by
+  re-running `start`.

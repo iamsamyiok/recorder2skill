@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -194,4 +194,57 @@ test("save-skill collapses multi-line descriptions to one line", () => {
   assert.equal(r.code, 0);
   const md = readFileSync(path.join(dir, "skills", "my-skill", "SKILL.md"), "utf8");
   assert.match(md, /^description: "Does X when Y is true\. Tabs too"$/m, "description must be single-line");
+});
+
+test("sessions skips torn session dirs and reports a partial count", () => {
+  const dir = path.join(os.tmpdir(), `r2s-torn-sessions-${process.pid}`);
+  const good = path.join(dir, "sessions", "20260914-170000-tornaa1");
+  mkdirSync(good, { recursive: true });
+  writeFileSync(path.join(good, "session.json"), JSON.stringify({ id: "20260914-170000-tornaa1", startedAt: 5000 }));
+  // Codex-style "unsaved or partial" entries must not fail the listing.
+  mkdirSync(path.join(dir, "sessions", "20260914-170000-tornbb2"), { recursive: true });
+  mkdirSync(path.join(dir, "sessions", "20260914-170000-torncc3"), { recursive: true });
+  writeFileSync(path.join(dir, "sessions", "20260914-170000-torncc3", "session.json"), '{"id": torn');
+
+  const r = runCli(["sessions"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 0);
+  assert.equal(r.json.count, 1, "only the healthy session is listed");
+  assert.equal(r.json.partial, 2, "both partial entries are counted");
+  assert.equal(r.json.sessions[0].sessionId, "20260914-170000-tornaa1");
+});
+
+test("events tolerates a torn trailing line and reports skippedLines", () => {
+  const dir = path.join(os.tmpdir(), `r2s-torn-events-${process.pid}`);
+  const sid = "20260914-170000-torndd4";
+  const sessionDir = path.join(dir, "sessions", sid);
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(path.join(sessionDir, "session.json"), JSON.stringify({ id: sid, startedAt: 5000 }));
+  writeFileSync(
+    path.join(sessionDir, "events.jsonl"),
+    [
+      JSON.stringify({ seq: 1, t: 1, epoch: 5001, type: "marker", source: "demo", payload: { text: "a" } }),
+      JSON.stringify({ seq: 2, t: 2, epoch: 5002, type: "app.activate", source: "demo", payload: {} }),
+      '{"seq":3,"t":3,"epoch":5003,"type":"app.activ', // torn tail (crash mid-write)
+      "",
+    ].join("\n"),
+  );
+
+  const r = runCli(["events", sid], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 0);
+  assert.equal(r.json.count, 2, "the two healthy events survive");
+  assert.equal(r.json.skippedLines, 1, "the torn line is counted, not fatal");
+});
+
+test("save-skill writes atomically (no .tmp residue in the skills dir)", () => {
+  const dir = path.join(os.tmpdir(), `r2s-atomic-skill-${process.pid}`);
+  mkdirSync(path.join(dir, "skills"), { recursive: true });
+  const body = path.join(dir, "body.md");
+  writeFileSync(body, "Do it atomically.");
+  const r = runCli(["save-skill", "atomic skill", "--description", "writes via tmp+rename", "--body-file", body], {
+    RECORDER2SKILL_DATA_DIR: dir,
+  });
+  assert.equal(r.code, 0);
+  assert.equal(existsSync(path.join(dir, "skills", "atomic-skill", "SKILL.md")), true);
+  const residue = readdirSync(path.join(dir, "skills", "atomic-skill")).filter((n) => n.includes(".tmp-"));
+  assert.deepEqual(residue, [], "tmp file must be renamed away, never left behind");
 });
