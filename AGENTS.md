@@ -56,6 +56,18 @@ boundary. String payload fields are redacted for structured PII
 - Generalize from the ONE recorded run: if the user acted on 3 rows, the skill
   handles every row (N). Keep what is essential; drop window positions,
   timings, and one-off specifics.
+- Scope = trigger: the description only promises what the body covers ("titles
+  only; for page content, use X instead"). Cheapest path first (one-line shell
+  extraction beats a full webfetch for a single `<title>`); deterministic
+  logic (charset, redirects, output format) goes into a bundled script via
+  `--script`, and every output format is defined (UTF-8, `URL<TAB>title`,
+  markdown tables for batches).
+- Manual steps stay explicit with recovery: who does it, what unblocks it
+  (login done / URL left the login page), how automation resumes. Probe
+  environment dependencies first and give the failure path (`--executable-path`
+  to an existing Chromium/Edge when downloads are blocked).
+- Anonymize every example host (`oa.example.com`, "工作台"); `recorder_save_skill`
+  flags likely-real hosts/IPs in `warnings` — resolve them before reporting done.
 - Semantic mapping to native tools (never replay UI clicks): browser pages ->
   `webfetch`; local files -> `read`/`write`/`edit`; GitHub -> `gh` CLI /
   `Bash(gh *)`; everything shell-shaped -> `Bash`; only genuine UI-only steps

@@ -166,11 +166,13 @@ node scripts/skill-doctor.mjs <skillDir>       # validate any SKILL.md (frontmat
 
 The `description` is written single-line (the format Codex CLI and Claude
 Code parsers expect); sessions live until you explicitly `archive` them.
-`save-skill` also warns (non-blocking) when a similar skill already exists,
-`--to <agents>` copies the finished skill straight into agent skill dirs
-(skill-doctor re-checks the installed copy), and skills may carry runnable
-scripts under `scripts/` (syntax-checked by `skill-doctor`; run them from a
-project that provides their dependencies).
+`save-skill` also warns (non-blocking) when a similar skill already exists
+(`similarTo`) and when the body embeds likely-real hosts or IPs (`warnings`
+— anonymize to `example.com` / documentation ranges, or lift them into
+`{{parameters}}`), `--to <agents>` copies the finished skill straight into
+agent skill dirs (skill-doctor re-checks the installed copy), and skills may
+carry runnable scripts under `scripts/` (syntax-checked by `skill-doctor`;
+run them from a project that provides their dependencies).
 
 Success = the SKILL.md exists on disk and is a valid Agent Skills file
 (YAML frontmatter `name`/`description`/`allowed-tools` + imperative body).

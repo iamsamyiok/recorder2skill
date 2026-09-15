@@ -434,3 +434,30 @@ test("save-skill --to installs the generated skill into agent dirs", () => {
   assert.equal(bad.code, 1, "unknown --to target dies with an error");
   assert.match(bad.stderr, /Unknown --to target/);
 });
+
+test("save-skill warns when the body embeds likely-real targets", () => {
+  const dir = path.join(os.tmpdir(), `r2s-leak-${process.pid}`);
+  mkdirSync(path.join(dir, "skills"), { recursive: true });
+  const leaky = path.join(dir, "leak.md");
+  writeFileSync(
+    leaky,
+    "Open the OA portal at http://oa.dyw-water.cn:2828/workbench and note the title.\nFallback host: 192.168.31.20:8080. Reference: https://example.com for docs.",
+  );
+  const r1 = runCli(["save-skill", "leaky skill", "--description", "Records OA titles.", "--body-file", leaky], {
+    RECORDER2SKILL_DATA_DIR: dir,
+  });
+  assert.equal(r1.code, 0);
+  const kinds = (r1.json.warnings ?? []).map((w) => w.type);
+  assert.ok(kinds.includes("possibleRealTarget"), `host warning expected: ${JSON.stringify(r1.json.warnings)}`);
+  assert.ok(kinds.includes("possibleRealIp"), `ip warning expected: ${JSON.stringify(r1.json.warnings)}`);
+  const host = r1.json.warnings.find((w) => w.type === "possibleRealTarget");
+  assert.ok(host.matches.includes("oa.dyw-water.cn"), JSON.stringify(host.matches));
+  assert.equal(host.matches.includes("example.com"), false, "documentation hosts stay out");
+
+  const clean = path.join(dir, "clean.md");
+  writeFileSync(clean, "Open http://oa.example.com:2828/workbench and note the title.");
+  const r2 = runCli(["save-skill", "clean skill", "--description", "Records OA titles.", "--body-file", clean], {
+    RECORDER2SKILL_DATA_DIR: dir,
+  });
+  assert.equal(r2.json.warnings, undefined, "anonymized examples raise no warning");
+});

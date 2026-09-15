@@ -773,6 +773,31 @@ function cmdSaveSkill(name, opts) {
       .slice(0, 3);
   }
 
+  // Privacy check (non-blocking): a real user's skill leaked their intranet
+  // host into a body example, contradicting the "never hardcode the recorded
+  // target" rule. Flag likely-real hosts/IPs so the author anonymizes them
+  // (example.com / "工作台") or lifts them into {{parameters}}.
+  const bodyText = readFileSync(bodyFile, "utf8");
+  const SAFE_HOSTS = new Set([
+    "example.com", "example.net", "example.org", "www.example.com", "localhost",
+    "www.w3.org", "schema.org", "github.com", "raw.githubusercontent.com",
+    "registry.npmjs.org", "www.npmjs.com", "nodejs.org", "www.python.org",
+    "docs.python.org", "learn.microsoft.com", "developer.mozilla.org",
+    "stackoverflow.com", "www.google.com",
+  ]);
+  const hostMatches = new Set(
+    (bodyText.match(/\b[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+\b/gi) ?? [])
+      .map((h) => h.toLowerCase())
+      .filter((h) => ![...SAFE_HOSTS].some((s) => h === s || h.endsWith("." + s)) && !/\.(test|invalid|example)$/i.test(h)),
+  );
+  const ipMatches = new Set(
+    (bodyText.match(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?\b/g) ?? [])
+      .filter((ip) => !/^127\./.test(ip) && !/^0\./.test(ip) && !ip.startsWith("255.")),
+  );
+  const leakWarnings = [];
+  if (hostMatches.size) leakWarnings.push({ type: "possibleRealTarget", matches: [...hostMatches].slice(0, 8), hint: "anonymize to example.com / a placeholder, or lift into a {{parameter}}" });
+  if (ipMatches.size) leakWarnings.push({ type: "possibleRealIp", matches: [...ipMatches].slice(0, 8), hint: "real IPs in examples leak infrastructure; use 192.0.2.x (documentation range) or a {{parameter}}" });
+
   process.stdout.write(
     JSON.stringify(
       {
@@ -783,6 +808,7 @@ function cmdSaveSkill(name, opts) {
         ...(bundled.length ? { scripts: bundled } : {}),
         ...(installed ? { installed, doctorOk } : {}),
         ...(similarTo?.length ? { similarTo } : {}),
+        ...(leakWarnings.length ? { warnings: leakWarnings } : {}),
       },
       null,
       2,
