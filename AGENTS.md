@@ -1,5 +1,11 @@
 # recorder2skill — Agent Brief (OpenCode plugin path)
 
+> Two ways to drive this project: this brief (OpenCode plugin tools
+> `recorder_*`, only when the plugin is installed) and the universal CLI flow
+> in `skill/recorder2skill/SKILL.md` (`node scripts/recorder-cli.mjs ...`,
+> works with any agent). They share one data root; pick one and stick with it
+> for a session. New users: start with the SKILL.md flow.
+
 Adapted from microsoft/skill-recorder's Describer and Skill Builder briefs
 (MIT, see PATCHES.md). This is the working procedure for turning a screen
 recording into a standard `SKILL.md` using the `recorder_*` tools registered

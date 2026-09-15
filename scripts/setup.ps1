@@ -10,10 +10,15 @@ if ($env:PROCESSOR_ARCHITECTURE -notmatch "AMD64|ARM64") {
 }
 
 $node = (Get-Command node -ErrorAction SilentlyContinue)
-if (-not $node) { throw "Node.js not found. Install Node.js 24 (https://nodejs.org)." }
-$nodeMajor = [int]((node --version) -replace '^v(\d+)\..*$', '$1')
-if ($nodeMajor -lt 24) {
-  throw "Node.js 24.x required (found $(node --version)). The vendored recorder pins engines >=24.19 <25."
+if (-not $node) { throw "Node.js not found. Install Node.js (https://nodejs.org)." }
+# Match the vendored recorder's engines range exactly (>=24.19 <25), not just
+# the major: 24.6 passing setup then failing npm engines confused a real user.
+$nodeVersion = (node --version) -replace '^v', ''
+$nodeParts = $nodeVersion.Split('.')
+$nodeMajor = [int]$nodeParts[0]
+$nodeMinor = if ($nodeParts.Count -gt 1) { [int]$nodeParts[1] } else { 0 }
+if (($nodeMajor -lt 24) -or ($nodeMajor -eq 24 -and $nodeMinor -lt 19) -or ($nodeMajor -ge 25)) {
+  throw "Node.js >=24.19 <25 required (found v$nodeVersion). The vendored recorder pins engines >=24.19 <25."
 }
 
 $root = Split-Path -Parent $PSScriptRoot
@@ -49,18 +54,25 @@ $electronExe = Join-Path $vendor "node_modules\electron\dist\electron.exe"
 if (-not (Test-Path $electronExe)) {
   # Some npm setups (allow-scripts policies, --ignore-scripts) skip the
   # electron postinstall. Run the official installer directly; it honors
-  # ELECTRON_MIRROR.
+  # ELECTRON_MIRROR. On failure, retry once via the npmmirror mirror —
+  # github.com / electronjs.org downloads are frequently reset for users
+  # behind the GFW (a real user had to wire this by hand).
   Write-Host "==> electron binary missing (postinstall skipped?). Running electron's installer directly..."
   Push-Location $vendor
   try {
     node node_modules\electron\install.js
-    if ($LASTEXITCODE -ne 0) { throw "electron installer failed" }
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "==> electron download failed; retrying via https://npmmirror.com/mirrors/electron/ ..."
+      $env:ELECTRON_MIRROR = "https://npmmirror.com/mirrors/electron/"
+      node node_modules\electron\install.js
+      if ($LASTEXITCODE -ne 0) { throw "electron installer failed (also via npmmirror)" }
+    }
   } finally {
     Pop-Location
   }
 }
 if (-not (Test-Path $electronExe)) {
-  throw "electron.exe not found at $electronExe - the electron download failed. Check network/proxy or set ELECTRON_MIRROR, then re-run setup."
+  throw "electron.exe not found at $electronExe - the electron download failed even via the npmmirror fallback. Check network/proxy, or set ELECTRON_MIRROR yourself, then re-run setup."
 }
 
 Write-Host ""

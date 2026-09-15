@@ -106,6 +106,20 @@ $env:OPENCODE_API_KEY = "<your Zen key>"       # optional alternative
 opencode
 ```
 
+### Network notes (China mirrors)
+
+- **Electron binary**: `setup.sh` / `setup.ps1` now retry the download once
+  against `https://npmmirror.com/mirrors/electron/` automatically when the
+  official source fails; exporting `ELECTRON_MIRROR` yourself (above) stays
+  the fastest path.
+- **Cloning this repo**: if `git clone` from GitHub stalls, grab the zip
+  instead — `https://codeload.github.com/iamsamyiok/recorder2skill/zip/refs/heads/main`
+  (same content, served from a different edge), then unzip and continue at
+  step 2.
+- **npm registry**: `npm ci` inside `vendor/skill-recorder` respects your
+  global npm config; `npm config set registry https://registry.npmmirror.com`
+  if package downloads are slow.
+
 Inside OpenCode, the default model is `agnes/agnes-2.5-flash` (Agnes AI,
 OpenAI-compatible); `/models` lists it plus any other configured providers
 (e.g. OpenCode Zen). Keys come from environment variables; `opencode.json`
@@ -116,12 +130,13 @@ pins no credentials.
 Install the bundled skill into your agent's skills directory:
 
 ```bash
-# OpenCode (project or global)
-cp -r skill/recorder2skill  yourproject/.opencode/skill/
-cp -r skill/recorder2skill  ~/.config/opencode/skill/
+# One command — copies skill/recorder2skill into every detected agent dir
+node scripts/recorder-cli.mjs install-skill all   # or: opencode | claude | codex
 
-# Claude Code / other Agent Skills consumers
-cp -r skill/recorder2skill  yourproject/.claude/skills/
+# Manual equivalent
+cp -r skill/recorder2skill  ~/.config/opencode/skill/   # OpenCode (global)
+cp -r skill/recorder2skill  ~/.claude/skills/           # Claude Code
+cp -r skill/recorder2skill  ~/.codex/skills/            # Codex CLI
 ```
 
 Then tell the agent:
@@ -141,7 +156,9 @@ node scripts/recorder-cli.mjs frames           # kept frames (JPEG paths + phash
 node scripts/recorder-cli.mjs align <id> [more...]  # one recording: step skeleton + hint; two: + parameters
 node scripts/recorder-cli.mjs save-skill <name> --description "..." \
   --body-file body.md --tools "Bash(git *),webfetch"   # writes SKILL.md
+node scripts/recorder-cli.mjs save-skill <name> ... --to opencode,claude  # + install into agent dirs
 node scripts/recorder-cli.mjs save-skill <name> ... --script run.mjs   # bundle runnable code under scripts/
+node scripts/recorder-cli.mjs last --summary    # smallest useful view of the latest session
 node scripts/recorder-cli.mjs archive latest   # move a session to archived-sessions/ (nothing deleted)
 node scripts/recorder-cli.mjs sessions --all   # archived sessions stay listed with archived: true
 node scripts/skill-doctor.mjs <skillDir>       # validate any SKILL.md (frontmatter + parser limits + script syntax gate)
@@ -150,8 +167,10 @@ node scripts/skill-doctor.mjs <skillDir>       # validate any SKILL.md (frontmat
 The `description` is written single-line (the format Codex CLI and Claude
 Code parsers expect); sessions live until you explicitly `archive` them.
 `save-skill` also warns (non-blocking) when a similar skill already exists,
-and skills may carry runnable scripts under `scripts/` (syntax-checked by
-`skill-doctor`; run them from a project that provides their dependencies).
+`--to <agents>` copies the finished skill straight into agent skill dirs
+(skill-doctor re-checks the installed copy), and skills may carry runnable
+scripts under `scripts/` (syntax-checked by `skill-doctor`; run them from a
+project that provides their dependencies).
 
 Success = the SKILL.md exists on disk and is a valid Agent Skills file
 (YAML frontmatter `name`/`description`/`allowed-tools` + imperative body).
@@ -204,7 +223,7 @@ directory keeps being used automatically).
 | Symptom | Fix |
 | --- | --- |
 | `setup.ps1` rejects the Node version | Install Node.js 24.x (`>=24.19 <25` is pinned by the vendor); `node --version` to confirm. |
-| `Missing electron binary` / `dist-electron/main.js` on `start` | Run `scripts\setup.ps1` (Windows) or `scripts/setup.sh` (Linux) to completion; if the electron binary download failed, re-run `npm ci` inside `vendor/skill-recorder`. |
+| `Missing electron binary` / `dist-electron/main.js` on `start` | Run `scripts\setup.ps1` (Windows) or `scripts/setup.sh` (Linux) to completion; setup retries the binary download against npmmirror automatically, or export `ELECTRON_MIRROR` first and re-run `npm ci` inside `vendor/skill-recorder`. |
 | Linux: Electron fails to launch with missing-library errors | Install runtime libs: `sudo apt-get install -y libgtk-3-0 libnss3 libasound2 libgbm1 libxss1`. |
 | Linux (root/containers): `Running as root without --no-sandbox` | Expected under root; the CLI passes `--no-sandbox` automatically in that case. Regular desktop users are unaffected. |
 | No floating control bar after `start` | The recorder window opens behind other windows; check the taskbar. If a second start was refused, a recorder is already running — finish it (`wait-ready`) or use `start --force`. |

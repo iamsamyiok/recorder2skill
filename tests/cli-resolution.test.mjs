@@ -362,3 +362,75 @@ test("align works with a single recording and hints to record again", () => {
   assert.equal(dup.json.parameters, undefined);
   assert.ok(dup.json.hint);
 });
+
+test("last --summary keeps the small fields and drops bundle/correlation", () => {
+  const dir = path.join(os.tmpdir(), `r2s-last-${process.pid}`);
+  const sid = "20260915-120000-lastsumaa1";
+  const sd = path.join(dir, "sessions", sid);
+  mkdirSync(sd, { recursive: true });
+  writeFileSync(path.join(sd, "session.json"), JSON.stringify({ id: sid, startedAt: 7000, stoppedAt: 8000, platform: process.platform }));
+  writeFileSync(path.join(sd, "events.jsonl"), `${JSON.stringify({ seq: 1, t: 1, epoch: 7100, type: "marker", source: "hud", payload: { text: "x" } })}\n`);
+  writeFileSync(path.join(sd, "bundle.json"), JSON.stringify({ session: { id: sid, platform: process.platform }, stats: { events: 1 } }));
+  const summary = runCli(["last", "--summary"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(summary.code, 0, summary.stdout + summary.stderr);
+  assert.equal(summary.json.sessionId, sid);
+  assert.equal(summary.json.eventCount, 1);
+  assert.equal(summary.json.stats.events, 1, "stats summary comes from the bundle");
+  assert.equal(summary.json.bundle, undefined, "bundle blob stays out of --summary");
+  assert.equal(summary.json.correlation, undefined, "correlation blob stays out of --summary");
+  const full = runCli(["last"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(full.code, 0);
+  assert.ok(full.json.bundle, "plain last keeps the full bundle");
+});
+
+test("doctor reports the repo root and agent registration state", () => {
+  const home = path.join(os.tmpdir(), `r2s-doc-home-${process.pid}`);
+  mkdirSync(home, { recursive: true });
+  const r = runCli(["doctor"], { RECORDER2SKILL_DATA_DIR: path.join(os.tmpdir(), `r2s-doc-data-${process.pid}`), HOME: home });
+  const repo = r.json.checks.find((c) => c.name === "repo");
+  const agents = r.json.checks.find((c) => c.name === "agents");
+  assert.ok(repo && repo.detail.includes("recorder-demo"), `repo check prints the checkout path: ${JSON.stringify(repo)}`);
+  assert.match(agents.detail, /opencode: not detected/, "fresh HOME has no agent dirs");
+});
+
+test("install-skill copies the bundled skill into an agent dir", () => {
+  const home = path.join(os.tmpdir(), `r2s-inst-home-${process.pid}`);
+  mkdirSync(home, { recursive: true });
+  const r = runCli(["install-skill", "opencode"], { HOME: home });
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  const dest = path.join(home, ".config", "opencode", "skill", "recorder2skill", "SKILL.md");
+  assert.equal(existsSync(dest), true, "SKILL.md lands in ~/.config/opencode/skill");
+  assert.equal(r.json.installed[0].agent, "opencode");
+
+  const doc = runCli(["doctor"], { RECORDER2SKILL_DATA_DIR: path.join(os.tmpdir(), `r2s-inst-doc-${process.pid}`), HOME: home });
+  assert.match(doc.json.checks.find((c) => c.name === "agents").detail, /opencode: installed/, "doctor sees the registration");
+
+  const bad = runCli(["install-skill", "nope"]);
+  assert.equal(bad.code, 1, "unknown target dies with an error");
+});
+
+test("save-skill --to installs the generated skill into agent dirs", () => {
+  const home = path.join(os.tmpdir(), `r2s-to-home-${process.pid}`);
+  mkdirSync(home, { recursive: true });
+  const dir = path.join(os.tmpdir(), `r2s-to-data-${process.pid}`);
+  mkdirSync(path.join(dir, "skills"), { recursive: true });
+  const body = path.join(dir, "body.md");
+  writeFileSync(body, "Do a thing well.");
+  const r = runCli(
+    ["save-skill", "to skill", "--description", "Installs into agent dirs on save.", "--body-file", body, "--to", "claude,codex"],
+    { RECORDER2SKILL_DATA_DIR: dir, HOME: home },
+  );
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  assert.deepEqual(
+    r.json.installed.map((p) => p.replace(home, "~")).sort(),
+    ["~/.claude/skills/to-skill", "~/.codex/skills/to-skill"],
+  );
+  assert.equal(r.json.doctorOk, true, "installed copy passes skill-doctor");
+  assert.equal(existsSync(path.join(home, ".claude", "skills", "to-skill", "SKILL.md")), true);
+  const bad = runCli(["save-skill", "to skill", "--description", "x", "--body-file", body, "--to", "nope"], {
+    RECORDER2SKILL_DATA_DIR: dir,
+    HOME: home,
+  });
+  assert.equal(bad.code, 1, "unknown --to target dies with an error");
+  assert.match(bad.stderr, /Unknown --to target/);
+});

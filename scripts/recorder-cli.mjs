@@ -14,8 +14,8 @@
 //   events [sessionId]        captured events; --types a,b to widen (default: meaningful only)
 //   frames [sessionId]        kept screen frames (JPEG paths + phash + reason)
 //   save-skill <name>         write SKILL.md from --description + --body-file (+ --tools)
-import { spawn } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync, writeSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,6 +36,13 @@ const dataRoot =
   process.env.RECORDER2SKILL_DATA_DIR ||
   process.env.RECORDER_DEMO_DATA_DIR ||
   (existsSync(defaultDataRoot.legacy) ? defaultDataRoot.legacy : defaultDataRoot.current);
+// Agent skill directories for --to / install-skill (bug-report follow-up:
+// generated skills must be able to land where the agent actually looks).
+const AGENT_SKILL_DIRS = {
+  opencode: path.join(os.homedir(), ".config", "opencode", "skill"),
+  claude: path.join(os.homedir(), ".claude", "skills"),
+  codex: path.join(os.homedir(), ".codex", "skills"),
+};
 const sessionsDir = path.join(dataRoot, "sessions");
 // Archived sessions keep all data but leave the active set (Codex-style
 // archived_sessions); addressable by explicit id, excluded from defaults.
@@ -352,7 +359,7 @@ function cmdWaitReady(timeoutSec = 600, pollSec = 2) {
   tick();
 }
 
-function cmdLast() {
+function cmdLast(opts = {}) {
   const dirs = listSessionDirs();
   if (!dirs.length) {
     process.stdout.write(JSON.stringify({ ok: false, error: `No sessions under ${sessionsDir}` }) + "\n");
@@ -360,6 +367,25 @@ function cmdLast() {
   }
   const dir = dirs[0];
   const summary = readSessionSummary(dir);
+  if (opts.summary) {
+    // Agent-context-friendly mode: drop the full bundle/correlation blobs and
+    // keep only the fields an analysis usually starts from.
+    const s = {
+      ok: true,
+      sessionId: summary.session?.id ?? path.basename(dir),
+      dir,
+      startedAt: summary.session?.startedAt,
+      stoppedAt: summary.session?.stoppedAt ?? null,
+      platform: summary.session?.platform ?? summary.bundle?.session?.platform,
+      stats: summary.bundle?.stats ?? {},
+      eventCount: summary.eventCount,
+      frameCount: summary.frames?.count ?? 0,
+      ready: summary.ready ?? false,
+      ...(summary.description ? { description: summary.description, descriptionPath: summary.descriptionPath } : {}),
+    };
+    process.stdout.write(JSON.stringify(s, null, 2) + "\n");
+    return;
+  }
   process.stdout.write(
     JSON.stringify({ ok: true, sessionId: summary.session?.id ?? path.basename(dir), ...summary }, null, 2) + "\n",
   );
@@ -705,6 +731,30 @@ function cmdSaveSkill(name, opts) {
   const outPath = path.join(outDir, "SKILL.md");
   atomicWriteFileSync(outPath, lines.join("\n"));
 
+  // Last-mile install (--to): copy the generated skill into the agent's skill
+  // directory so it is discoverable without a manual cp. The installed copy
+  // is syntax-gated by skill-doctor before being reported.
+  const installTargets = String(opts.to ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+  let installed;
+  let doctorOk;
+  if (installTargets.length) {
+    installed = [];
+    for (const t of installTargets) {
+      const dest = AGENT_SKILL_DIRS[t];
+      if (!dest) die(`Unknown --to target "${t}" (choose from: ${Object.keys(AGENT_SKILL_DIRS).join(", ")})`);
+      const destDir = path.join(dest, slug);
+      mkdirSync(dest, { recursive: true });
+      cpSync(outDir, destDir, { recursive: true });
+      installed.push(destDir);
+    }
+    const doctor = spawnSync(process.execPath, [path.join(projectRoot, "scripts", "skill-doctor.mjs"), installed[0]], { encoding: "utf8" });
+    doctorOk = doctor.status === 0;
+    if (!doctorOk) log.warn(`installed copy failed skill-doctor:\n${doctor.stdout || doctor.stderr}`);
+  }
+
   // Reuse check (resolved out of the caller's way): a non-blocking hint when
   // an existing skill looks like a duplicate of what is about to land.
   let similarTo;
@@ -725,7 +775,15 @@ function cmdSaveSkill(name, opts) {
 
   process.stdout.write(
     JSON.stringify(
-      { ok: true, skill: slug, path: outPath, ...(existed ? { existed: true } : {}), ...(bundled.length ? { scripts: bundled } : {}), ...(similarTo?.length ? { similarTo } : {}) },
+      {
+        ok: true,
+        skill: slug,
+        path: outPath,
+        ...(existed ? { existed: true } : {}),
+        ...(bundled.length ? { scripts: bundled } : {}),
+        ...(installed ? { installed, doctorOk } : {}),
+        ...(similarTo?.length ? { similarTo } : {}),
+      },
       null,
       2,
     ) + "\n",
@@ -896,6 +954,25 @@ function cmdAlign(ids) {
   );
 }
 
+/** Register the bundled recorder2skill skill with detected agents (one command). */
+function cmdInstallSkill(targets) {
+  const src = path.join(projectRoot, "skill", "recorder2skill");
+  if (!existsSync(path.join(src, "SKILL.md"))) die("Bundled skill not found at skill/recorder2skill.");
+  const list = (!targets.length || targets.includes("all"))
+    ? Object.keys(AGENT_SKILL_DIRS)
+    : targets;
+  const installed = [];
+  for (const t of list) {
+    const dest = AGENT_SKILL_DIRS[t];
+    if (!dest) die(`Unknown target "${t}" (choose from: ${Object.keys(AGENT_SKILL_DIRS).join(", ")}, all)`);
+    const destDir = path.join(dest, "recorder2skill");
+    mkdirSync(dest, { recursive: true });
+    cpSync(src, destDir, { recursive: true });
+    installed.push({ agent: t, dir: destDir });
+  }
+  process.stdout.write(JSON.stringify({ ok: true, skillSource: src, installed }, null, 2) + "\n");
+}
+
 function parseOpts(argv) {
   const opts = {};
   const positional = [];
@@ -921,8 +998,20 @@ function cmdDoctor() {
   const checks = [];
   const add = (name, ok, detail) => checks.push({ name, ok, detail });
 
-  const nodeMajor = Number(process.versions.node.split(".")[0]);
-  add("node", nodeMajor >= 24, `node ${process.versions.node} (vendor engines require >=24.19 <25)`);
+  // Same range the setup scripts enforce: >=24.19 <25 (a bare major check
+  // once let 24.6 through setup and fail later at npm engines).
+  const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
+  const nodeOk = (nodeMajor === 24 && nodeMinor >= 19);
+  add("node", nodeOk, `node ${process.versions.node} (vendor engines require >=24.19 <25)`);
+
+  // Where the repo checkout lives (SKILL.md commands assume it) and which
+  // agent skill dirs exist + whether this skill is registered in them.
+  add("repo", true, projectRoot);
+  const agentReport = Object.entries(AGENT_SKILL_DIRS).map(([name, dir]) => {
+    if (!existsSync(dir)) return `${name}: not detected`;
+    return `${name}: ${existsSync(path.join(dir, "recorder2skill", "SKILL.md")) ? "installed" : "dir present, recorder2skill missing (run install-skill)"}`;
+  });
+  add("agents", true, agentReport.join("; ") || "no agent skill dirs known");
 
   const platOk = process.platform === "win32" || process.platform === "linux" || process.platform === "darwin";
   add("platform", platOk, process.platform);
@@ -981,11 +1070,15 @@ const [cmd, ...args] = process.argv.slice(2);
 const usage =
   "Usage: recorder-cli.mjs start | wait-ready [timeoutSec] | last | summary <sessionId> |\n" +
   "                  sessions [--all] | timeline [sessionId] | events [sessionId] [--types a,b] [--all] [--from ms] [--to ms] [--limit n] |\n" +
-  "                  frames [sessionId] | skills | doctor | archive [sessionId|latest] |\n" +
-  "                  align <sessionId> [more...] | save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"] [--script <file>]\n";
+  "                  frames [sessionId] | skills | doctor | install-skill [opencode,claude,codex|all] | archive [sessionId|latest] |\n" +
+  "                  align <sessionId> [more...] | save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"] [--script <file>] [--to opencode,claude,codex] |\n" +
+  "                  last [--summary]\n";
 if (cmd === "start") cmdStart();
 else if (cmd === "wait-ready") cmdWaitReady(Number(args[0]) || 600, Number(args[1]) || 2);
-else if (cmd === "last") cmdLast();
+else if (cmd === "last") {
+  const { opts } = parseOpts(args);
+  cmdLast({ summary: opts.summary === true });
+}
 else if (cmd === "summary" && args[0]) cmdSummary(args[0]);
 else if (cmd === "sessions") {
   const { opts } = parseOpts(args);
@@ -996,6 +1089,7 @@ else if (cmd === "archive") cmdArchive(undefined);
 else if (cmd === "align" && args.length >= 1) cmdAlign(args);
 else if (cmd === "timeline") cmdTimeline(args[0]);
 else if (cmd === "doctor") cmdDoctor();
+else if (cmd === "install-skill") cmdInstallSkill(args);
 else if (cmd === "skills") cmdSkills();
 else if (cmd === "events") {
   const { opts, positional } = parseOpts(args);

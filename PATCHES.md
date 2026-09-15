@@ -158,3 +158,23 @@ Adopted (deterministic, zero-dependency adaptations):
 - Evaluated, not adopted: Webwright's model-driven distillation/routing and
   Playwright-based browser collectors (different runtime, heavy vendor
   surface).
+
+## 8. `src/Recorder.tsx` + `electron/collectors/windows-url-provider.ts` — user-feedback fixes `[RECORDER-DEMO]`
+
+Two vendor touches from the first round of real-user feedback:
+
+1. **UIA script output encoding (garbled window titles on Windows).**
+   Root cause: `windows-url-provider.ts` shells out to `powershell.exe` and
+   reads stdout as UTF-8, but Windows PowerShell 5.1 emits the OEM code page
+   (GBK on zh-CN systems) by default — every non-ASCII title/URL came back
+   mojibake. The native `GetWindowTextW` path (utf16le) was always correct.
+   Fix: prepend `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8`
+   to the UIA_SCRIPT so the source emits UTF-8.
+2. **Marker hotkey discoverability.** A real user never found
+   `Ctrl+Shift+M` on their own. The recording HUD now shows a persistent
+   hint line next to the existing toggle hint:
+   `{⌘⇧M|Ctrl+Shift+M} marks a step for the analyzer`.
+
+Both patches are marked `[RECORDER-DEMO]` in place. The upstream CJK
+rendering for fetched page titles (PowerShell pipeline) is the only path
+affected; `windows-active-window.ts` needs no change.

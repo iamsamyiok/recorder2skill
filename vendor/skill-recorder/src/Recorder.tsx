@@ -710,6 +710,9 @@ export function Recorder() {
       )}
 
       <p className="hint">{TOGGLE_SHORTCUT} toggles from anywhere</p>
+      {/* [RECORDER-DEMO] Make the marker hotkey discoverable: a real user never
+          found it, yet it is the key aid for later step alignment. */}
+      <p className="hint">{IS_MAC ? "⌘⇧M" : "Ctrl+Shift+M"} marks a step for the analyzer</p>
 
       {showRecordingWarning && (
         <RecordingPrivacyWarning

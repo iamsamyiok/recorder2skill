@@ -11,12 +11,16 @@ if [ "$(uname -s)" != "Linux" ]; then
 fi
 
 if ! have node; then
-  echo "ERROR: Node.js not found. Install Node.js 24 (https://nodejs.org)." >&2
+  echo "ERROR: Node.js not found. Install Node.js (https://nodejs.org)." >&2
   exit 1
 fi
-NODE_MAJOR="$(node --version | sed -E 's/^v([0-9]+)\..*$/\1/')"
-if [ "$NODE_MAJOR" -lt 24 ]; then
-  echo "ERROR: Node.js 24.x required (found $(node --version)). The vendored recorder pins engines >=24.19 <25." >&2
+# Match the vendored recorder's engines range exactly (>=24.19 <25), not just
+# the major: 24.6 passing setup then failing npm engines confused a real user.
+NODE_VERSION="$(node --version | sed 's/^v//')"
+NODE_MAJOR="${NODE_VERSION%%.*}"
+NODE_MINOR="$(echo "$NODE_VERSION" | cut -d. -f2)"
+if [ "${NODE_MAJOR:-0}" -lt 24 ] || { [ "${NODE_MAJOR:-0}" -eq 24 ] && [ "${NODE_MINOR:-0}" -lt 19 ]; } || [ "${NODE_MAJOR:-0}" -ge 25 ]; then
+  echo "ERROR: Node.js >=24.19 <25 required (found v$NODE_VERSION). The vendored recorder pins engines >=24.19 <25." >&2
   exit 1
 fi
 
@@ -33,13 +37,19 @@ ELECTRON_BIN="$VENDOR/node_modules/electron/dist/electron"
 if [ ! -f "$ELECTRON_BIN" ]; then
   # Some npm setups (allow-scripts policies, --ignore-scripts) skip the
   # electron postinstall. Run the official installer directly; it honors
-  # ELECTRON_MIRROR.
+  # ELECTRON_MIRROR. On failure, retry once via the npmmirror mirror —
+  # github.com / electronjs.org downloads are frequently reset for users
+  # behind the GFW (a real user had to wire this by hand).
   echo "==> electron binary missing (postinstall skipped?). Running electron's installer directly..."
-  (cd "$VENDOR" && node node_modules/electron/install.js)
+  if ! (cd "$VENDOR" && node node_modules/electron/install.js); then
+    echo "==> electron download failed; retrying via https://npmmirror.com/mirrors/electron/ ..."
+    (cd "$VENDOR" && ELECTRON_MIRROR="https://npmmirror.com/mirrors/electron/" node node_modules/electron/install.js)
+  fi
 fi
 if [ ! -f "$ELECTRON_BIN" ]; then
   echo "ERROR: electron binary not found at $ELECTRON_BIN" >&2
-  echo "The electron download failed. Check network/proxy or set ELECTRON_MIRROR, then re-run setup." >&2
+  echo "The electron download failed even via the npmmirror fallback." >&2
+  echo "Check network/proxy, or set ELECTRON_MIRROR yourself, then re-run setup." >&2
   exit 1
 fi
 chmod +x "$ELECTRON_BIN" 2>/dev/null || true

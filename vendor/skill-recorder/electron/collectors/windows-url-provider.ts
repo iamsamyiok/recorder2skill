@@ -54,6 +54,10 @@ const WINDOWS_BROWSER_TOKENS = [
  * page tree.
  */
 const UIA_SCRIPT = `
+# [RECORDER-DEMO] Force UTF-8 console output: Windows PowerShell 5.1 defaults
+# stdout to the OEM codepage (GBK on zh-CN), which mojibake'd non-ASCII URLs
+# and titles when Node decoded the pipe as UTF-8.
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'SilentlyContinue'
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
