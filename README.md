@@ -138,7 +138,7 @@ node scripts/recorder-cli.mjs wait-ready 600   # blocks until the session is pro
 node scripts/recorder-cli.mjs timeline         # ordered steps + auto-generated description
 node scripts/recorder-cli.mjs events           # captured events, PII-redacted (--types/--from/--to/--limit)
 node scripts/recorder-cli.mjs frames           # kept frames (JPEG paths + phash + reason)
-node scripts/recorder-cli.mjs align <id> <id> [more...]  # record the same task twice: common skeleton + parameters
+node scripts/recorder-cli.mjs align <id> [more...]  # one recording: step skeleton + hint; two: + parameters
 node scripts/recorder-cli.mjs save-skill <name> --description "..." \
   --body-file body.md --tools "Bash(git *),webfetch"   # writes SKILL.md
 node scripts/recorder-cli.mjs save-skill <name> ... --script run.mjs   # bundle runnable code under scripts/

@@ -801,12 +801,49 @@ function lcsMatches(a, b) {
 }
 
 function cmdAlign(ids) {
-  if (!ids || ids.length < 2) {
-    die("align requires at least two session ids (the literal \"latest\" means the newest active session).");
+  if (!ids || ids.length < 1) {
+    die("align requires at least one session id (the literal \"latest\" means the newest active session).");
   }
-  const loaded = ids.map(loadAlignableEvents);
+  // One recording works; two or more make it better. Deduplicate ids that
+  // resolve to the same session ("latest latest") so a session never aligns
+  // against itself.
+  const loaded = [];
+  const seen = new Set();
+  for (const id of ids) {
+    const l = loadAlignableEvents(id);
+    if (seen.has(l.id)) continue;
+    seen.add(l.id);
+    loaded.push(l);
+  }
   const first = loaded[0];
   if (!first.events.length) die(`Session ${first.id} has no meaningful events to align.`);
+
+  // Single-recording path: the skeleton is this session's step list; the
+  // honest hint tells the agent how to upgrade it into a parameterized skill.
+  if (loaded.length === 1) {
+    const skeleton = first.events.map((e) => ({
+      refAtMs: e.atMs,
+      type: e.type,
+      ...(e.app ? { app: e.app } : {}),
+      ...(e.text ? { text: e.text } : {}),
+      presentIn: 1,
+    }));
+    process.stdout.write(
+      JSON.stringify(
+        {
+          ok: true,
+          sessions: [{ id: first.id, meaningfulEvents: first.events.length }],
+          skeletonSteps: skeleton.length,
+          skeleton,
+          hint: "Single recording: this is the raw step skeleton. Record the same task once more and re-run align to lift the values that vary into parameters.",
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+    return;
+  }
+
   const sig = (e) => `${e.type}|${e.app}|${normalizeStepText(e.text)}`;
   const firstSigs = first.events.map(sig);
   // Match every other session against the first; keep the first-session
@@ -945,7 +982,7 @@ const usage =
   "Usage: recorder-cli.mjs start | wait-ready [timeoutSec] | last | summary <sessionId> |\n" +
   "                  sessions [--all] | timeline [sessionId] | events [sessionId] [--types a,b] [--all] [--from ms] [--to ms] [--limit n] |\n" +
   "                  frames [sessionId] | skills | doctor | archive [sessionId|latest] |\n" +
-  "                  align <sessionId> <sessionId> [more...] | save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"] [--script <file>]\n";
+  "                  align <sessionId> [more...] | save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"] [--script <file>]\n";
 if (cmd === "start") cmdStart();
 else if (cmd === "wait-ready") cmdWaitReady(Number(args[0]) || 600, Number(args[1]) || 2);
 else if (cmd === "last") cmdLast();
@@ -956,7 +993,7 @@ else if (cmd === "sessions") {
 }
 else if (cmd === "archive" && args[0]) cmdArchive(args[0]);
 else if (cmd === "archive") cmdArchive(undefined);
-else if (cmd === "align" && args.length >= 2) cmdAlign(args);
+else if (cmd === "align" && args.length >= 1) cmdAlign(args);
 else if (cmd === "timeline") cmdTimeline(args[0]);
 else if (cmd === "doctor") cmdDoctor();
 else if (cmd === "skills") cmdSkills();

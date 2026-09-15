@@ -325,6 +325,40 @@ test("align extracts a common skeleton and lifts differences into parameters", (
     { slot: "skeleton[1].text", values: ["https://example.com/flights?from=100", "https://example.com/flights?from=200"] },
   ]);
 
-  const bad = runCli(["align", "20260915-100000-alignaa1"], { RECORDER2SKILL_DATA_DIR: dir });
-  assert.equal(bad.code, 2, "fewer than two sessions is a usage error");
+  // One id is the single-recording path now (skeleton + hint, no parameters).
+  const single = runCli(["align", "20260915-100000-alignaa1"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(single.code, 0);
+  assert.equal(single.json.skeletonSteps, 4);
+  assert.equal(single.json.parameters, undefined);
+  assert.ok(single.json.hint);
+});
+
+test("align works with a single recording and hints to record again", () => {
+  const dir = path.join(os.tmpdir(), `r2s-align-one-${process.pid}`);
+  const sid = "20260915-110000-aligncc3";
+  const sd = path.join(dir, "sessions", sid);
+  mkdirSync(sd, { recursive: true });
+  writeFileSync(path.join(sd, "session.json"), JSON.stringify({ id: sid, startedAt: 5000 }));
+  writeFileSync(
+    path.join(sd, "events.jsonl"),
+    [
+      { seq: 1, t: 1, epoch: 5100, type: "app.activate", source: "system", payload: { app: "Terminal", title: "work" } },
+      { seq: 2, t: 2, epoch: 5200, type: "terminal.command", source: "terminal", payload: { text: "make build" } },
+    ]
+      .map((e) => JSON.stringify(e))
+      .join("\n") + "\n",
+  );
+  const r = runCli(["align", sid], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  assert.equal(r.json.skeletonSteps, 2);
+  assert.equal(r.json.skeleton[1].text, "make build");
+  assert.equal(r.json.parameters, undefined, "one recording cannot infer parameters");
+  assert.match(r.json.hint, /Record the same task once more/);
+
+  // Duplicate ids resolve to one session: no self-alignment, single path.
+  const dup = runCli(["align", sid, sid], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(dup.code, 0);
+  assert.equal(dup.json.skeletonSteps, 2);
+  assert.equal(dup.json.parameters, undefined);
+  assert.ok(dup.json.hint);
 });

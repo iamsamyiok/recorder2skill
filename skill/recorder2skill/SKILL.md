@@ -1,5 +1,6 @@
 ---
 name: recorder2skill
+version: 1.1.0
 description: "Turn a live screen recording into a reusable agent skill. Use when the user asks to record a task ('record my screen while I...', 'watch me do this and automate it', 'turn this into a skill') on Windows or Linux. Drives the bundled recorder2skill CLI entirely over shell commands; works in any agent that can run commands and read files."
 allowed-tools:
   - Bash(node scripts/recorder-cli.mjs *)
@@ -36,10 +37,11 @@ exiting 0 (or a clear "No sessions" error) means the CLI works.
 4. **Analyze** (see method below) — `timeline` (includes the auto-generated
    `description` — start from it), then `events` (text fields are
    PII-redacted), then — only where events are ambiguous — `frames` +
-   viewing the JPEG paths. If the user recorded the same task more than
-   once, run `align <id> <id>` first: it returns the common skeleton and
-   the values that differ (parameters) so the skill covers the task class,
-   not just one run.
+   viewing the JPEG paths. One recording is enough: `align <id>` returns
+   the step skeleton plus a hint. If the user can record the same task a
+   second time, run `align <id> <id>`: values that vary across recordings
+   are lifted into parameters, so the skill covers the task class instead
+   of one run.
 5. **Write the skill** — compose the SKILL.md body, save it to a temp file,
    then `node scripts/recorder-cli.mjs save-skill <name> --description "..."
    --body-file <file> [--tools "pattern1,pattern2"]`. The description is
