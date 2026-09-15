@@ -138,15 +138,20 @@ node scripts/recorder-cli.mjs wait-ready 600   # blocks until the session is pro
 node scripts/recorder-cli.mjs timeline         # ordered steps + auto-generated description
 node scripts/recorder-cli.mjs events           # captured events, PII-redacted (--types/--from/--to/--limit)
 node scripts/recorder-cli.mjs frames           # kept frames (JPEG paths + phash + reason)
+node scripts/recorder-cli.mjs align <id> <id> [more...]  # record the same task twice: common skeleton + parameters
 node scripts/recorder-cli.mjs save-skill <name> --description "..." \
   --body-file body.md --tools "Bash(git *),webfetch"   # writes SKILL.md
+node scripts/recorder-cli.mjs save-skill <name> ... --script run.mjs   # bundle runnable code under scripts/
 node scripts/recorder-cli.mjs archive latest   # move a session to archived-sessions/ (nothing deleted)
 node scripts/recorder-cli.mjs sessions --all   # archived sessions stay listed with archived: true
-node scripts/skill-doctor.mjs <skillDir>       # validate any SKILL.md (frontmatter + parser limits)
+node scripts/skill-doctor.mjs <skillDir>       # validate any SKILL.md (frontmatter + parser limits + script syntax gate)
 ```
 
 The `description` is written single-line (the format Codex CLI and Claude
 Code parsers expect); sessions live until you explicitly `archive` them.
+`save-skill` also warns (non-blocking) when a similar skill already exists,
+and skills may carry runnable scripts under `scripts/` (syntax-checked by
+`skill-doctor`; run them from a project that provides their dependencies).
 
 Success = the SKILL.md exists on disk and is a valid Agent Skills file
 (YAML frontmatter `name`/`description`/`allowed-tools` + imperative body).

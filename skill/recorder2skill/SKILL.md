@@ -36,15 +36,23 @@ exiting 0 (or a clear "No sessions" error) means the CLI works.
 4. **Analyze** (see method below) — `timeline` (includes the auto-generated
    `description` — start from it), then `events` (text fields are
    PII-redacted), then — only where events are ambiguous — `frames` +
-   viewing the JPEG paths.
+   viewing the JPEG paths. If the user recorded the same task more than
+   once, run `align <id> <id>` first: it returns the common skeleton and
+   the values that differ (parameters) so the skill covers the task class,
+   not just one run.
 5. **Write the skill** — compose the SKILL.md body, save it to a temp file,
    then `node scripts/recorder-cli.mjs save-skill <name> --description "..."
    --body-file <file> [--tools "pattern1,pattern2"]`. The description is
    stored single-line (the Codex CLI / Claude Code parser convention).
-   Report the returned path to the user.
+   When the recording shows a script or command sequence worth reusing
+   verbatim, bundle it: `--script <file>` copies it under `scripts/` and
+   lists it in a "Bundled scripts" section (note in the body which
+   dependencies the script needs and where to run it from). Report the
+   returned path to the user; if the output mentions `similarTo`, tell the
+   user an existing skill looks related and let them decide.
 6. **Validate** — run `node scripts/skill-doctor.mjs <skillDir>` on the
    generated skill; it must exit 0 (frontmatter, single-line description,
-   cross-parser limits).
+   cross-parser limits, bundled-script syntax).
 7. **Clean up (optional)** — once the user confirms the skill, move the
    session out of the active set with
    `node scripts/recorder-cli.mjs archive <sessionId>` (nothing is deleted;

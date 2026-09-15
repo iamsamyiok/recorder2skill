@@ -318,17 +318,20 @@ export const RecorderDemoPlugin: Plugin = async () => {
           "(data root default: C:\\temp\\recorder-demo on Windows, ~/.recorder-demo elsewhere; " +
           "override with RECORDER_DEMO_DATA_DIR). Provide a kebab-case name, a " +
           "trigger-oriented description, the imperative generalized instructions body, and optional " +
-          "allowed-tools frontmatter patterns (e.g. [\"Bash(gh *)\", \"webfetch\"]).",
+          "allowed-tools frontmatter patterns (e.g. [\"Bash(gh *)\", \"webfetch\"]). Optionally attach " +
+          "runnable scripts (bundled under scripts/ and listed in SKILL.md; syntax-checked by skill-doctor).",
         args: {
           name: tool.schema.string().min(1).describe("kebab-case skill id, e.g. submit-expense-records."),
           description: tool.schema.string().min(1).describe("SKILL.md description: what it does + when to use it."),
           body: tool.schema.string().min(1).describe("Markdown instructions body (imperative, generalized, native-tool-first)."),
           allowedTools: tool.schema.array(tool.schema.string()).optional().describe("allowed-tools frontmatter patterns."),
+          scripts: tool.schema.array(tool.schema.string()).optional().describe("Absolute paths of runnable scripts to bundle under scripts/."),
         },
-        async execute({ name, description, body, allowedTools }) {
+        async execute({ name, description, body, allowedTools, scripts }) {
           const slug = slugifySkillName(name);
           const skillsDir = path.join(dataRoot, "skills");
           const outDir = path.join(skillsDir, slug);
+          const existed = existsSync(path.join(outDir, "SKILL.md"));
           mkdirSync(outDir, { recursive: true });
           // Codex and Claude parsers expect a single-line description.
           const oneLine = description.replace(/\s+/g, " ").trim();
@@ -342,11 +345,38 @@ export const RecorderDemoPlugin: Plugin = async () => {
             for (const t of tools) lines.push(`  - ${t}`);
           }
           lines.push("---", "", body.trim(), "");
+          const bundled: string[] = [];
+          for (const src of scripts ?? []) {
+            if (!existsSync(src)) throw new Error(`Script not found: ${src}`);
+            const scriptsDir = path.join(outDir, "scripts");
+            mkdirSync(scriptsDir, { recursive: true });
+            const base = path.basename(src);
+            const dest = path.join(scriptsDir, base);
+            const tmpScript = `${dest}.tmp-${process.pid}`;
+            writeFileSync(tmpScript, readFileSync(src));
+            renameSync(tmpScript, dest);
+            bundled.push(`scripts/${base}`);
+          }
+          if (bundled.length) {
+            lines.push("## Bundled scripts", "");
+            for (const b of bundled) lines.push(`- \`${b}\``);
+            lines.push(
+              "",
+              "Runnable code shipped with this skill. Node and Python resolve imports from the",
+              "script's own directory upward, so run it inside a project that provides the",
+              "dependencies (or install the prerequisites next to `scripts/`).",
+              "",
+            );
+          }
           const outPath = path.join(outDir, "SKILL.md");
           const tmpPath = `${outPath}.tmp-${process.pid}`;
           writeFileSync(tmpPath, lines.join("\n"));
           renameSync(tmpPath, outPath);
-          return JSON.stringify({ ok: true, skill: slug, path: outPath }, null, 2);
+          return JSON.stringify(
+            { ok: true, skill: slug, path: outPath, ...(existed ? { existed: true } : {}), ...(bundled.length ? { scripts: bundled } : {}) },
+            null,
+            2,
+          );
         },
       }),
     },

@@ -14,6 +14,7 @@
 // Prints one JSON line per skill: { ok, path, errors, warnings }.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -54,6 +55,40 @@ function parseFrontmatter(text) {
   }
   const body = text.slice(text.indexOf("---", end + 1) + 3).trim();
   return { meta, tools, body };
+}
+
+// Webwright Skill Factory gate, adapted: a bundled script must at least
+// parse before the skill is trusted (full replay-verification stays with the
+// skill author).
+const SCRIPT_CHECKS = {
+  ".sh": { cmd: "bash", args: (f) => ["-n", f], label: "bash -n" },
+  ".py": { cmd: "python3", args: (f) => ["-c", `import ast,sys; ast.parse(open(sys.argv[1], encoding='utf-8').read())`, f], label: "ast.parse" },
+  ".mjs": { cmd: "node", args: (f) => ["--check", f], label: "node --check" },
+  ".js": { cmd: "node", args: (f) => ["--check", f], label: "node --check" },
+};
+
+function checkBundledScripts(skillDir, errors, warnings) {
+  const scriptsDir = path.join(skillDir, "scripts");
+  if (!existsSync(scriptsDir)) return;
+  for (const name of readdirSync(scriptsDir).sort()) {
+    const file = path.join(scriptsDir, name);
+    if (!statSync(file).isFile()) continue;
+    const check = SCRIPT_CHECKS[path.extname(name).toLowerCase()];
+    if (!check) continue;
+    let r;
+    try {
+      r = spawnSync(check.cmd, check.args(file), { encoding: "utf8" });
+    } catch {
+      warnings.push(`scripts/${name}: could not run ${check.label} (${check.cmd} unavailable); skipped`);
+      continue;
+    }
+    if (r.error && r.error.code === "ENOENT") {
+      warnings.push(`scripts/${name}: ${check.cmd} not available; syntax check skipped`);
+    } else if (r.status !== 0) {
+      const outLines = (r.stderr || r.stdout || "").trim().split("\n").filter(Boolean);
+      errors.push(`scripts/${name} fails ${check.label}: ${outLines[outLines.length - 1] ?? "non-zero exit"}`);
+    }
+  }
 }
 
 function validate(target) {
@@ -99,6 +134,10 @@ function validate(target) {
 
   if (!body) errors.push("SKILL.md has no body after the frontmatter");
   if (/\bTODO\b|\bFIXME\b|\bTBD\b/.test(body)) warnings.push("body contains TODO/FIXME/TBD placeholders");
+
+  if (path.basename(file) === "SKILL.md") {
+    checkBundledScripts(path.dirname(file), errors, warnings);
+  }
 
   return { ok: errors.length === 0, path: file, errors, warnings };
 }

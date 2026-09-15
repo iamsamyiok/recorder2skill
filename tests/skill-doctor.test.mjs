@@ -77,3 +77,17 @@ test("skill-doctor exits 2 with usage when given no targets", () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /Usage:/);
 });
+
+test("skill-doctor syntax-checks bundled scripts (gate)", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "r2s-doctor-scripts-"));
+  const skillDir = path.join(dir, "gated-skill");
+  const scriptsDir = path.join(skillDir, "scripts");
+  mkdirSync(scriptsDir, { recursive: true });
+  writeFileSync(path.join(skillDir, "SKILL.md"), '---\nname: gated-skill\ndescription: "carries runnable code"\n---\nRun scripts/go.sh first.\n');
+  writeFileSync(path.join(scriptsDir, "go.sh"), "#!/bin/bash\necho ok\n");
+  writeFileSync(path.join(scriptsDir, "broken.py"), "def f(:\n");
+  const r = runDoctor([skillDir]);
+  assert.equal(r.code, 1, "a syntax-broken bundled script must fail the gate");
+  assert.match(r.results[0].errors.join("; "), /broken\.py fails/);
+  assert.ok(r.results[0].errors.every((e) => /broken\.py/.test(e)), "the healthy script stays clean");
+});

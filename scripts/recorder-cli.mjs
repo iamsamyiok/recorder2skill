@@ -622,6 +622,32 @@ function slugifySkillName(name) {
   );
 }
 
+function readSkillMeta(dir) {
+  const f = path.join(dir, "SKILL.md");
+  if (!existsSync(f)) return null;
+  const text = readFileSync(f, "utf8");
+  const m = text.match(/^---\n([\s\S]*?)\n---/);
+  if (!m) return null;
+  const meta = {};
+  for (const line of m[1].split("\n")) {
+    const km = line.match(/^([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*)$/);
+    if (km) meta[km[1]] = km[2].trim().replace(/^"(.*)"$/, "$1").replace(/^'(.*)'$/, '$1');
+  }
+  return meta;
+}
+
+function textTokens(text) {
+  return new Set(String(text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2));
+}
+
+/** Jaccard similarity of two skill word sets (route/recommend-style reuse check). */
+function skillSimilarity(a, b) {
+  let inter = 0;
+  for (const w of a) if (b.has(w)) inter++;
+  const union = a.size + b.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
 function cmdSaveSkill(name, opts) {
   if (!opts.description) die("save-skill requires --description \"what it does + when to use it\".");
   const bodyFile = opts.bodyFile ?? opts["body-file"];
@@ -630,6 +656,7 @@ function cmdSaveSkill(name, opts) {
   const slug = slugifySkillName(String(name ?? ""));
   const skillsDir = path.join(dataRoot, "skills");
   const outDir = path.join(skillsDir, slug);
+  const existed = existsSync(path.join(outDir, "SKILL.md"));
   mkdirSync(outDir, { recursive: true });
   // Codex and Claude parsers expect a single-line description; collapse all
   // whitespace. Warn (keep full) when it exceeds the 1024-char convention.
@@ -645,9 +672,191 @@ function cmdSaveSkill(name, opts) {
     for (const t of tools) lines.push(`  - ${t}`);
   }
   lines.push("---", "", readFileSync(bodyFile, "utf8").trim(), "");
+
+  // Webwright Skill Factory idea: a skill can carry runnable code alongside
+  // the prose. Scripts are copied into scripts/ and listed in a standard
+  // section so agents see they exist (skill-doctor syntax-checks them).
+  const scriptArgs = [
+    ...(opts.script ? [String(opts.script)] : []),
+    ...String(opts.scripts ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+  ];
+  const bundled = [];
+  const scriptsDir = path.join(outDir, "scripts");
+  for (const src of scriptArgs) {
+    if (!existsSync(src)) die(`Script not found: ${src}`);
+    mkdirSync(scriptsDir, { recursive: true });
+    const base = path.basename(src);
+    const dest = path.join(scriptsDir, base);
+    atomicWriteFileSync(dest, readFileSync(src));
+    bundled.push(`scripts/${base}`);
+  }
+  if (bundled.length) {
+    lines.push("## Bundled scripts", "");
+    for (const b of bundled) lines.push(`- \`${b}\``);
+    lines.push(
+      "",
+      "Runnable code shipped with this skill. Node and Python resolve imports from the",
+      "script's own directory upward, so run it inside a project that provides the",
+      "dependencies (or install the prerequisites next to `scripts/`).",
+      "",
+    );
+  }
+
   const outPath = path.join(outDir, "SKILL.md");
   atomicWriteFileSync(outPath, lines.join("\n"));
-  process.stdout.write(JSON.stringify({ ok: true, skill: slug, path: outPath }, null, 2) + "\n");
+
+  // Reuse check (resolved out of the caller's way): a non-blocking hint when
+  // an existing skill looks like a duplicate of what is about to land.
+  let similarTo;
+  if (existsSync(skillsDir)) {
+    const incoming = textTokens(`${slug} ${description}`);
+    similarTo = readdirSync(skillsDir)
+      .filter((n) => n !== slug && !n.startsWith("."))
+      .map((n) => {
+        const meta = readSkillMeta(path.join(skillsDir, n));
+        if (!meta) return null;
+        const score = skillSimilarity(incoming, textTokens(`${meta.name ?? n} ${meta.description ?? ""}`));
+        return score >= 0.5 ? { id: n, score: Number(score.toFixed(2)) } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+  }
+
+  process.stdout.write(
+    JSON.stringify(
+      { ok: true, skill: slug, path: outPath, ...(existed ? { existed: true } : {}), ...(bundled.length ? { scripts: bundled } : {}), ...(similarTo?.length ? { similarTo } : {}) },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Multi-recording alignment — Webwright Skill Factory "learn" idea: solves of
+// the same task template are aligned; what is identical becomes the skeleton,
+// what differs is lifted into parameters. Deterministic, zero-dependency LCS.
+// ---------------------------------------------------------------------------
+
+function normalizeStepText(text) {
+  return String(text ?? "")
+    .toLowerCase()
+    .replace(/\d+/g, "#")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function loadAlignableEvents(id) {
+  const { id: sid, dir } = resolveTargetSession(id === "latest" ? undefined : id);
+  const meta = readJsonIn(dir, "session.json");
+  const eventsPath = path.join(dir, "events.jsonl");
+  if (!existsSync(eventsPath)) die(`Session ${sid} has no events yet.`);
+  const startedAt = meta?.startedAt ?? 0;
+  const events = readFileSync(eventsPath, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .flatMap((line) => {
+      try {
+        const { payload, ...rest } = JSON.parse(line);
+        return [{ ...rest, atMs: rest.epoch - startedAt, ...(payload ?? {}) }];
+      } catch {
+        return []; // torn line: alignment tolerates and skips it
+      }
+    })
+    .filter((e) => MEANINGFUL_EVENT_TYPES.has(e.type))
+    .map((e) => ({
+      type: e.type,
+      atMs: e.atMs,
+      app: String(e.app ?? e.source ?? ""),
+      text: String(e.textPreview ?? e.text ?? e.title ?? e.url ?? e.note ?? ""),
+    }));
+  return { id: sid, events };
+}
+
+/** Longest common subsequence over signature arrays; returns ordered [i, j] pairs. */
+function lcsMatches(a, b) {
+  const n = a.length;
+  const m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const pairs = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) {
+      pairs.push([i, j]);
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  return pairs;
+}
+
+function cmdAlign(ids) {
+  if (!ids || ids.length < 2) {
+    die("align requires at least two session ids (the literal \"latest\" means the newest active session).");
+  }
+  const loaded = ids.map(loadAlignableEvents);
+  const first = loaded[0];
+  if (!first.events.length) die(`Session ${first.id} has no meaningful events to align.`);
+  const sig = (e) => `${e.type}|${e.app}|${normalizeStepText(e.text)}`;
+  const firstSigs = first.events.map(sig);
+  // Match every other session against the first; keep the first-session
+  // positions that survive every pairwise LCS — that is the common skeleton.
+  let keep = new Map(first.events.map((_, i) => [i, new Map()]));
+  for (const other of loaded.slice(1)) {
+    const pairs = new Map(lcsMatches(firstSigs, other.events.map(sig)));
+    const next = new Map();
+    for (const [i, m] of keep) {
+      if (pairs.has(i)) {
+        m.set(other.id, pairs.get(i));
+        next.set(i, m);
+      }
+    }
+    keep = next;
+  }
+  const skeleton = [];
+  const parameters = [];
+  for (const [i, matchMap] of [...keep].sort((a, b) => a[0] - b[0])) {
+    const e = first.events[i];
+    const values = [
+      ...new Set([e.text, ...[...matchMap].map(([id, j]) => loaded.find((l) => l.id === id).events[j].text)]),
+    ]
+      .map((t) => t.trim())
+      .filter(Boolean);
+    skeleton.push({
+      refAtMs: e.atMs,
+      type: e.type,
+      ...(e.app ? { app: e.app } : {}),
+      ...(e.text ? { text: e.text } : {}),
+      presentIn: matchMap.size + 1,
+    });
+    if (values.length > 1) {
+      parameters.push({ slot: `skeleton[${skeleton.length - 1}].text`, values });
+    }
+  }
+  process.stdout.write(
+    JSON.stringify(
+      {
+        ok: true,
+        sessions: loaded.map((l) => ({ id: l.id, meaningfulEvents: l.events.length })),
+        skeletonSteps: skeleton.length,
+        skeleton,
+        ...(parameters.length ? { parameters } : {}),
+        note: "refAtMs is measured on the first session; feed skeleton + parameters to save-skill as the parameterized procedure.",
+      },
+      null,
+      2,
+    ) + "\n",
+  );
 }
 
 function parseOpts(argv) {
@@ -736,7 +945,7 @@ const usage =
   "Usage: recorder-cli.mjs start | wait-ready [timeoutSec] | last | summary <sessionId> |\n" +
   "                  sessions [--all] | timeline [sessionId] | events [sessionId] [--types a,b] [--all] [--from ms] [--to ms] [--limit n] |\n" +
   "                  frames [sessionId] | skills | doctor | archive [sessionId|latest] |\n" +
-  "                  save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"]\n";
+  "                  align <sessionId> <sessionId> [more...] | save-skill <name> --description \"...\" --body-file <file> [--tools \"a,b\"] [--script <file>]\n";
 if (cmd === "start") cmdStart();
 else if (cmd === "wait-ready") cmdWaitReady(Number(args[0]) || 600, Number(args[1]) || 2);
 else if (cmd === "last") cmdLast();
@@ -747,6 +956,7 @@ else if (cmd === "sessions") {
 }
 else if (cmd === "archive" && args[0]) cmdArchive(args[0]);
 else if (cmd === "archive") cmdArchive(undefined);
+else if (cmd === "align" && args.length >= 2) cmdAlign(args);
 else if (cmd === "timeline") cmdTimeline(args[0]);
 else if (cmd === "doctor") cmdDoctor();
 else if (cmd === "skills") cmdSkills();

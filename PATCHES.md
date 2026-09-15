@@ -130,3 +130,31 @@ Adopted in `scripts/recorder-cli.mjs` and `.opencode/plugins/recorder-demo.ts`:
   case; vendor `READY.json`/`recording.json` atomic writes — the CLI treats
   READY.json as existence-only and a torn `recording.json` is recovered by
   re-running `start`.
+
+## 7. Skill-quality patterns absorbed from microsoft/Webwright (demo layer, no vendor change)
+
+Source study: `src/webwright/skill_factory/` (gate.py, learn.py, route.py,
+retrieve.py) — the "skills are programs, verified before they land" philosophy
+and the library reuse loop resolved out of the agent's way.
+
+Adopted (deterministic, zero-dependency adaptations):
+
+- Bundled scripts (`save-skill --script`, plugin `scripts` arg): a skill can
+  carry runnable code under `scripts/`, listed in a standard "Bundled
+  scripts" section. skill-doctor enforces a syntax gate (`bash -n`,
+  `ast.parse`, `node --check`) as the demo-layer analogue of Webwright's
+  replay verification; full replay stays with the skill author. Documented
+  boundary: Node/Python resolve imports from the script's directory upward,
+  so bundled scripts run inside a project that provides their dependencies.
+- Multi-recording alignment (`align <id> <id> ...`): Webwright's learn step
+  aligns solves of one template — identical parts become the skeleton,
+  differences become parameters. Our version aligns meaningful events across
+  sessions with a normalized-signature LCS; differing text values at matched
+  positions are reported as parameter suggestions.
+- Reuse check in `save-skill` (route/recommend idea, resolved out of the
+  caller's way): a non-blocking `similarTo` hint lists up to three existing
+  skills with token-Jaccard similarity >= 0.5; rewriting a skill sets
+  `existed: true`.
+- Evaluated, not adopted: Webwright's model-driven distillation/routing and
+  Playwright-based browser collectors (different runtime, heavy vendor
+  surface).

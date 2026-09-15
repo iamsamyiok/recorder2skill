@@ -248,3 +248,83 @@ test("save-skill writes atomically (no .tmp residue in the skills dir)", () => {
   const residue = readdirSync(path.join(dir, "skills", "atomic-skill")).filter((n) => n.includes(".tmp-"));
   assert.deepEqual(residue, [], "tmp file must be renamed away, never left behind");
 });
+
+test("save-skill bundles scripts and reports existed on rewrite", () => {
+  const dir = path.join(os.tmpdir(), `r2s-script-${process.pid}`);
+  mkdirSync(path.join(dir, "skills"), { recursive: true });
+  const body = path.join(dir, "body.md");
+  writeFileSync(body, "Run the bundled script.");
+  const script = path.join(dir, "shot.mjs");
+  writeFileSync(script, 'console.log("ok");\n');
+  const r = runCli(
+    ["save-skill", "scripted skill", "--description", "Bundles runnable code.", "--body-file", body, "--script", script],
+    { RECORDER2SKILL_DATA_DIR: dir },
+  );
+  assert.equal(r.code, 0);
+  assert.deepEqual(r.json.scripts, ["scripts/shot.mjs"]);
+  assert.equal(existsSync(path.join(dir, "skills", "scripted-skill", "scripts", "shot.mjs")), true);
+  const md = readFileSync(path.join(dir, "skills", "scripted-skill", "SKILL.md"), "utf8");
+  assert.match(md, /## Bundled scripts/);
+  assert.match(md, /`scripts\/shot\.mjs`/);
+
+  const r2 = runCli(
+    ["save-skill", "scripted skill", "--description", "Bundles runnable code.", "--body-file", body],
+    { RECORDER2SKILL_DATA_DIR: dir },
+  );
+  assert.equal(r2.json.existed, true, "rewriting an existing skill is flagged");
+});
+
+test("save-skill hints at similar existing skills (non-blocking)", () => {
+  const dir = path.join(os.tmpdir(), `r2s-similar-${process.pid}`);
+  mkdirSync(path.join(dir, "skills"), { recursive: true });
+  const body = path.join(dir, "body.md");
+  writeFileSync(body, "Do the deploy flow.");
+  const commonDesc = "Deploy a static site to github pages with a custom domain and verify the deployment";
+  const r1 = runCli(["save-skill", "deploy-site", "--description", commonDesc, "--body-file", body], {
+    RECORDER2SKILL_DATA_DIR: dir,
+  });
+  assert.equal(r1.code, 0);
+  assert.equal(r1.json.similarTo, undefined, "first save has nothing to be similar to");
+  const r2 = runCli(["save-skill", "publish-pages", "--description", commonDesc, "--body-file", body], {
+    RECORDER2SKILL_DATA_DIR: dir,
+  });
+  assert.equal(r2.code, 0, "the hint is non-blocking");
+  assert.ok(Array.isArray(r2.json.similarTo) && r2.json.similarTo.some((s) => s.id === "deploy-site"), JSON.stringify(r2.json));
+  const r3 = runCli(["save-skill", "unrelated-thing", "--description", "Boil water for tea with a kettle", "--body-file", body], {
+    RECORDER2SKILL_DATA_DIR: dir,
+  });
+  assert.equal(r3.json.similarTo, undefined);
+});
+
+test("align extracts a common skeleton and lifts differences into parameters", () => {
+  const dir = path.join(os.tmpdir(), `r2s-align-${process.pid}`);
+  for (const [sid, url, base] of [
+    ["20260915-100000-alignaa1", "https://example.com/flights?from=100", 5000],
+    ["20260915-100001-alignbb2", "https://example.com/flights?from=200", 6000],
+  ]) {
+    const sd = path.join(dir, "sessions", sid);
+    mkdirSync(sd, { recursive: true });
+    writeFileSync(path.join(sd, "session.json"), JSON.stringify({ id: sid, startedAt: base }));
+    writeFileSync(
+      path.join(sd, "events.jsonl"),
+      [
+        { seq: 1, t: 1, epoch: base + 100, type: "app.activate", source: "system", payload: { app: "Google Chrome", title: "Flight search" } },
+        { seq: 2, t: 2, epoch: base + 200, type: "browser.url", source: "browser", payload: { url } },
+        { seq: 3, t: 3, epoch: base + 300, type: "terminal.command", source: "terminal", payload: { text: "python book.py" } },
+        { seq: 4, t: 4, epoch: base + 400, type: "marker", source: "hud", payload: { text: "done" } },
+      ]
+        .map((e) => JSON.stringify(e))
+        .join("\n") + "\n",
+    );
+  }
+  const r = runCli(["align", "20260915-100000-alignaa1", "20260915-100001-alignbb2"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(r.code, 0, r.stdout + r.stderr);
+  assert.equal(r.json.skeletonSteps, 4, "all four steps share one signature");
+  assert.equal(r.json.skeleton[1].type, "browser.url");
+  assert.deepEqual(r.json.parameters, [
+    { slot: "skeleton[1].text", values: ["https://example.com/flights?from=100", "https://example.com/flights?from=200"] },
+  ]);
+
+  const bad = runCli(["align", "20260915-100000-alignaa1"], { RECORDER2SKILL_DATA_DIR: dir });
+  assert.equal(bad.code, 2, "fewer than two sessions is a usage error");
+});
