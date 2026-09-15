@@ -142,6 +142,7 @@ node scripts/recorder-cli.mjs save-skill <name> --description "..." \
   --body-file body.md --tools "Bash(git *),webfetch"   # writes SKILL.md
 node scripts/recorder-cli.mjs archive latest   # move a session to archived-sessions/ (nothing deleted)
 node scripts/recorder-cli.mjs sessions --all   # archived sessions stay listed with archived: true
+node scripts/skill-doctor.mjs <skillDir>       # validate any SKILL.md (frontmatter + parser limits)
 ```
 
 The `description` is written single-line (the format Codex CLI and Claude

@@ -5,7 +5,7 @@
   "description": "Record how a task is done, turn it into an installable Agent Skill (recorder2skill). Dev tooling: plugin tests, typecheck, CI.",
   "type": "module",
   "scripts": {
-    "test": "node tests/build.mjs && node --test tests/plugin-tools.test.mjs tests/cli-resolution.test.mjs",
+    "test": "node tests/build.mjs && node --test tests/plugin-tools.test.mjs tests/cli-resolution.test.mjs tests/skill-doctor.test.mjs",
     "typecheck": "tsc --noEmit -p tests"
   },
   "devDependencies": {

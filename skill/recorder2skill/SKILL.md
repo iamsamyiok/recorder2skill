@@ -42,7 +42,10 @@ exiting 0 (or a clear "No sessions" error) means the CLI works.
    --body-file <file> [--tools "pattern1,pattern2"]`. The description is
    stored single-line (the Codex CLI / Claude Code parser convention).
    Report the returned path to the user.
-6. **Clean up (optional)** — once the user confirms the skill, move the
+6. **Validate** — run `node scripts/skill-doctor.mjs <skillDir>` on the
+   generated skill; it must exit 0 (frontmatter, single-line description,
+   cross-parser limits).
+7. **Clean up (optional)** — once the user confirms the skill, move the
    session out of the active set with
    `node scripts/recorder-cli.mjs archive <sessionId>` (nothing is deleted;
    `sessions --all` still lists it).

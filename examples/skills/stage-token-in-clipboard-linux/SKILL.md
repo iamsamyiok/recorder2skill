@@ -35,6 +35,10 @@ can be pasted into a target app, without writing it to a file or shell history.
 
 ## Edge cases
 
+- No X display (headless box, SSH): `xclip` fails with `Can't open display`.
+  Check `echo $DISPLAY`; if empty or stale, start one and target it:
+  `Xvfb :99 -screen 0 1920x1080x24 &` then `export DISPLAY=:99` (the
+  clipboard then lives inside that X session only).
 - Wayland sessions: use `wl-copy` / `wl-paste` instead of `xclip`.
 - Values with single quotes or newlines: prefer reading from an env var or file
   over inlining the literal into the command.

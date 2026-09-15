@@ -42,7 +42,10 @@ into the report, straight from the terminal.
 
 - Version command writes to stderr (e.g. `java -version`): redirect with
   `2>&1` before piping.
-- Wayland sessions: use `wl-copy` / `wl-paste` instead of `xclip`.
+- No X display (headless box, SSH): `xclip` fails with `Can't open display`.
+  Check `echo $DISPLAY`; if empty or stale, start one and target it:
+  `Xvfb :99 -screen 0 1920x1080x24 &` then `export DISPLAY=:99` (the
+  clipboard then lives inside that X session only).
 - Multiple runtimes: keep one clipboard round-trip per version; do not
   concatenate manually — paste each into its own field.
 - If the clipboard paste lands empty, re-run the copy command once — the
