@@ -389,7 +389,7 @@ test("doctor reports the repo root and agent registration state", () => {
   const r = runCli(["doctor"], { RECORDER2SKILL_DATA_DIR: path.join(os.tmpdir(), `r2s-doc-data-${process.pid}`), HOME: home });
   const repo = r.json.checks.find((c) => c.name === "repo");
   const agents = r.json.checks.find((c) => c.name === "agents");
-  assert.ok(repo && repo.detail.includes("recorder-demo"), `repo check prints the checkout path: ${JSON.stringify(repo)}`);
+  assert.ok(repo && path.resolve(repo.detail) === path.resolve(here, ".."), `repo check prints the checkout path: ${JSON.stringify(repo)}`);
   assert.match(agents.detail, /opencode: not detected/, "fresh HOME has no agent dirs");
 });
 
